@@ -5,9 +5,9 @@ import http from 'node:http';
 import { createServer as createVite } from 'vite';
 import handler from '../api/game.js';
 import { useDatabase } from '../server/db.js';
-import { createFakeDatabase } from './fake-db.js';
+import { createMemoryDatabase } from '../server/memory-db.js';
 
-useDatabase(createFakeDatabase());
+useDatabase(createMemoryDatabase());
 
 const apiPort = Number(process.env.MOCK_API_PORT || 3001);
 const webPort = Number(process.env.PORT || 5173);

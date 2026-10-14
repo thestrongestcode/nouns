@@ -574,7 +574,524 @@ export const QUESTIONS = [
     "correct": 3,
     "hint": "Include the speaker AND Luis in the group of owners.",
     "why": "“Ours” means belonging to us, including the speaker and Luis. “Mine” leaves Luis out.",
-    "discuss": "Why is “our” not a replacement in “They are ___”?"
+    "discuss": "Which owner does \"mine\" leave out, and why does \"ours\" fix that?"
+  },
+  {
+    "id": 33,
+    "sector": 0,
+    "skill": "Common noun",
+    "prompt": "Which word is a COUNT noun, one you can number and make plural?",
+    "options": [
+      "advice",
+      "homework",
+      "chair",
+      "information"
+    ],
+    "correct": 2,
+    "hint": "Could you say 'three ___'?",
+    "why": "'Chair' can be counted: one chair, two chairs. 'Advice,' 'homework,' and 'information' are non-count, so you cannot say 'two advices.'",
+    "discuss": "Can you say 'three homeworks'? Why or why not?"
+  },
+  {
+    "id": 34,
+    "sector": 0,
+    "skill": "Plural noun",
+    "prompt": "Which sentence has a plural noun spelled INCORRECTLY?",
+    "options": [
+      "Four dishes were clean.",
+      "Two boxes sat by the door.",
+      "Three babies slept nearby.",
+      "Five boxs were stacked."
+    ],
+    "correct": 3,
+    "hint": "Nouns ending in x usually add -es.",
+    "why": "'Boxs' should be 'boxes.' Nouns ending in x, ch, sh, s, or z usually add -es.",
+    "discuss": "Why does 'babies' change the y to i, while 'dishes' just adds -es?"
+  },
+  {
+    "id": 35,
+    "sector": 0,
+    "skill": "Concrete noun",
+    "prompt": "Which word names something you could touch?",
+    "context": "Her kindness and the warm bread comforted the guests.",
+    "options": [
+      "kindness",
+      "bread",
+      "comfort",
+      "warmth"
+    ],
+    "correct": 1,
+    "hint": "Use your senses: could you touch it, smell it, or taste it?",
+    "why": "'Bread' is a physical object you can touch, smell, and taste. The other words name feelings or qualities.",
+    "discuss": "Is 'warmth' concrete or abstract? How do you know?"
+  },
+  {
+    "id": 36,
+    "sector": 0,
+    "skill": "Collective noun",
+    "prompt": "Which phrase contains a collective noun?",
+    "options": [
+      "three geese",
+      "a flock of geese",
+      "the goose",
+      "one goose"
+    ],
+    "correct": 1,
+    "hint": "Look for one word that names a group.",
+    "why": "'Flock' names a group of birds as one unit, so it is a collective noun. 'Geese' names more than one bird, but it does not name a group.",
+    "discuss": "What is a collective noun for a group of lions?"
+  },
+  {
+    "id": 37,
+    "sector": 0,
+    "skill": "Proper noun",
+    "prompt": "Which sentence capitalizes proper nouns correctly?",
+    "options": [
+      "We visited the grand canyon in arizona.",
+      "We visited the grand Canyon in Arizona.",
+      "We visited the Grand Canyon in arizona.",
+      "We visited the Grand Canyon in Arizona."
+    ],
+    "correct": 3,
+    "hint": "Capitalize the names of specific places, not general descriptions.",
+    "why": "'Grand Canyon' and 'Arizona' name specific places, so both are capitalized. 'The canyon' used alone is a common noun.",
+    "discuss": "Why is 'canyon' lowercase in 'a deep canyon' but capitalized in 'Grand Canyon'?"
+  },
+  {
+    "id": 38,
+    "sector": 0,
+    "skill": "Common noun",
+    "prompt": "Which word is a common noun in this sentence?",
+    "context": "Jordan bought a bicycle in Denver, Colorado.",
+    "options": [
+      "Jordan",
+      "Denver",
+      "bicycle",
+      "Colorado"
+    ],
+    "correct": 2,
+    "hint": "Ask whether the word names one specific person, place, or thing.",
+    "why": "'Bicycle' is a general name for a type of vehicle, so it is common. The others name specific people and places.",
+    "discuss": "If a bicycle had a brand name, would that word be common or proper? Give an example."
+  },
+  {
+    "id": 39,
+    "sector": 0,
+    "skill": "Abstract noun",
+    "prompt": "Which sentence contains an abstract noun?",
+    "options": [
+      "The hikers reached the summit.",
+      "A bridge crossed the river.",
+      "Their patience finally paid off.",
+      "The dog barked twice."
+    ],
+    "correct": 2,
+    "hint": "Look for a quality or idea you cannot touch.",
+    "why": "'Patience' names a quality, not a physical object. 'Summit,' 'bridge,' and 'dog' are concrete.",
+    "discuss": "Which abstract nouns do you hear most often at school?"
+  },
+  {
+    "id": 40,
+    "sector": 0,
+    "skill": "Plural noun",
+    "prompt": "What is the plural of 'knife'?",
+    "options": [
+      "knifes",
+      "knives",
+      "knife's",
+      "kniven"
+    ],
+    "correct": 1,
+    "hint": "Many words ending in f or fe change to v before adding es.",
+    "why": "'Knife' becomes 'knives.' Words such as 'wolf' and 'leaf' follow the same pattern.",
+    "discuss": "Why does 'roof' just add s to become 'roofs'?"
+  },
+  {
+    "id": 41,
+    "sector": 1,
+    "skill": "Personal pronoun",
+    "prompt": "Which pronoun completes the sentence correctly? ___ can run faster than Sam.",
+    "options": [
+      "Me",
+      "I",
+      "Myself",
+      "Mine"
+    ],
+    "correct": 1,
+    "hint": "Is the pronoun doing the action or receiving it?",
+    "why": "'I' is the subject form, used when the pronoun does the action. 'Me' is for receiving the action.",
+    "discuss": "Does 'Me can run faster' sound right if you remove 'Sam'?"
+  },
+  {
+    "id": 42,
+    "sector": 1,
+    "skill": "Personal pronoun",
+    "prompt": "Which pronoun completes the sentence correctly? The coach asked ___ to bring the ball.",
+    "options": [
+      "I",
+      "me",
+      "myself",
+      "mine"
+    ],
+    "correct": 1,
+    "hint": "Who receives the request?",
+    "why": "'Me' is the object form. It receives the action of asking.",
+    "discuss": "Why is 'asked me' correct but 'asked I' is not?"
+  },
+  {
+    "id": 43,
+    "sector": 1,
+    "skill": "Reflexive pronoun",
+    "prompt": "Which sentence uses 'myself' correctly?",
+    "options": [
+      "Myself and Lena went home.",
+      "I hurt myself on the stairs.",
+      "Myself wants a snack.",
+      "Please call myself tomorrow."
+    ],
+    "correct": 1,
+    "hint": "Does 'myself' refer back to the subject 'I'?",
+    "why": "'Myself' refers back to 'I,' the subject who was hurt. The other sentences use 'myself' with no matching subject.",
+    "discuss": "How would you correct the first sentence so it uses 'I' correctly?"
+  },
+  {
+    "id": 44,
+    "sector": 1,
+    "skill": "Interrogative pronoun",
+    "prompt": "Which question uses 'whom' correctly?",
+    "options": [
+      "Whom is at the door?",
+      "To whom did you give the note?",
+      "Whom wants to play?",
+      "Whom finished first?"
+    ],
+    "correct": 1,
+    "hint": "Is the word the object of a preposition such as 'to' or 'for'?",
+    "why": "'Whom' is the object form, here after the preposition 'to.' When the question word is the subject, use 'who.'",
+    "discuss": "Rewrite 'Whom is at the door?' using 'who.'"
+  },
+  {
+    "id": 45,
+    "sector": 1,
+    "skill": "Demonstrative pronoun",
+    "prompt": "Which word completes the sentence correctly? ___ is the best idea yet.",
+    "options": [
+      "This",
+      "Who",
+      "Mine",
+      "Everyone"
+    ],
+    "correct": 0,
+    "hint": "Which word points to a specific idea?",
+    "why": "'This' points to a specific idea and stands in as the subject, so it is a demonstrative pronoun.",
+    "discuss": "Which demonstrative pronoun would you use for an idea that is far away?"
+  },
+  {
+    "id": 46,
+    "sector": 1,
+    "skill": "Indefinite pronoun",
+    "prompt": "Which word is an indefinite pronoun?",
+    "options": [
+      "Maria",
+      "nobody",
+      "gray",
+      "quickly"
+    ],
+    "correct": 1,
+    "hint": "Does this word refer to people or things without naming a specific one?",
+    "why": "'Nobody' refers to no person in particular, so it is indefinite. 'Maria' is a proper noun, 'gray' an adjective, and 'quickly' an adverb.",
+    "discuss": "Which verb fits here: 'Nobody ___ here yet'? Why?"
+  },
+  {
+    "id": 47,
+    "sector": 1,
+    "skill": "Relative pronoun",
+    "prompt": "Choose the relative pronoun that completes the sentence: The book ___ I borrowed was overdue.",
+    "options": [
+      "which",
+      "why",
+      "myself",
+      "they"
+    ],
+    "correct": 0,
+    "hint": "The word should join a clause to the noun 'book.'",
+    "why": "'Which' introduces the clause 'I borrowed,' which describes 'book.'",
+    "discuss": "Can you use 'that' here too? What does that tell you about relative pronouns?"
+  },
+  {
+    "id": 48,
+    "sector": 1,
+    "skill": "Possessive pronoun",
+    "prompt": "Which sentence uses a possessive PRONOUN standing alone?",
+    "options": [
+      "Her bike is red.",
+      "That bike is hers.",
+      "The bike is her's.",
+      "Hers bike is red."
+    ],
+    "correct": 1,
+    "hint": "A possessive pronoun stands alone, without a noun after it.",
+    "why": "'Hers' stands alone and shows ownership. 'Her bike' uses 'her' before a noun, and possessive pronouns never take an apostrophe.",
+    "discuss": "Which other possessive pronoun could replace 'hers' in this sentence?"
+  },
+  {
+    "id": 49,
+    "sector": 2,
+    "skill": "Possessive pronoun",
+    "prompt": "Which sentence uses 'its' correctly?",
+    "options": [
+      "The dog wagged it's tail.",
+      "The dog wagged its tail.",
+      "The dog wagged its' tail.",
+      "The dog wagged it tail."
+    ],
+    "correct": 1,
+    "hint": "'It's' is short for 'it is.' Does the sentence mean 'it is'?",
+    "why": "'Its' is a possessive pronoun, like 'hers.' It never takes an apostrophe. 'It's' means 'it is' or 'it has.'",
+    "discuss": "Test it: replace the word with 'it is.' Does the sentence still make sense?"
+  },
+  {
+    "id": 50,
+    "sector": 2,
+    "skill": "Possessive pronoun",
+    "prompt": "Which sentence correctly says 'you are going to love the museum'?",
+    "options": [
+      "Your going to love the museum.",
+      "You're going to love the museum.",
+      "Youre going to love the museum.",
+      "Your' going to love the museum."
+    ],
+    "correct": 1,
+    "hint": "Can you replace the word with 'you are'?",
+    "why": "'You're' means 'you are.' 'Your' shows ownership, as in 'your backpack.'",
+    "discuss": "Which word goes in this blank: '___ backpack is on the floor'?"
+  },
+  {
+    "id": 51,
+    "sector": 2,
+    "skill": "Plural noun",
+    "prompt": "Which correction fixes 'The childrens toys were everywhere'?",
+    "options": [
+      "The children's toys were everywhere.",
+      "The childrens' toys were everywhere.",
+      "The child's toys were everywhere.",
+      "The children toys were everywhere."
+    ],
+    "correct": 0,
+    "hint": "'Children' is an irregular plural. It does not add s.",
+    "why": "'Children' is already plural and irregular, so possession is shown with 's: 'children's toys.' Adding s to make 'childrens' is wrong.",
+    "discuss": "What is the plural of 'child' in a sentence with no ownership?"
+  },
+  {
+    "id": 52,
+    "sector": 2,
+    "skill": "Personal pronoun",
+    "prompt": "Which correction fixes 'Me and Sam went to the store'?",
+    "options": [
+      "Sam and I went to the store.",
+      "Sam and me went to the store.",
+      "Sam and myself went to the store.",
+      "Sam and mine went to the store."
+    ],
+    "correct": 0,
+    "hint": "Remove Sam. Which fits: 'Me went to the store' or 'I went to the store'?",
+    "why": "Subject pronouns (I, we, he, she, they) do the action. 'I went' is correct, so 'Sam and I' is correct.",
+    "discuss": "Why is 'Me went' wrong, even though 'me' is correct in 'asked me'?"
+  },
+  {
+    "id": 53,
+    "sector": 2,
+    "skill": "Possessive noun",
+    "prompt": "Which sentence correctly shows that ONE woman owns the bags?",
+    "options": [
+      "The womans' bags were heavy.",
+      "The women's bags were heavy.",
+      "The woman's bags were heavy.",
+      "The woman bags were heavy."
+    ],
+    "correct": 2,
+    "hint": "One owner: add 's to the singular noun.",
+    "why": "'Woman's' is a singular possessive, showing that one woman owns the bags. 'Women's' would mean several women own them.",
+    "discuss": "How would you write the sentence if three women shared the bags?"
+  },
+  {
+    "id": 54,
+    "sector": 2,
+    "skill": "Personal pronoun",
+    "prompt": "Which pronoun replaces the second 'the students' in this sentence? The students said the students would arrive late.",
+    "options": [
+      "they",
+      "it",
+      "theirs",
+      "them"
+    ],
+    "correct": 0,
+    "hint": "The second phrase is the subject of 'would arrive.'",
+    "why": "'They' is a subject pronoun that replaces a group of people. 'Them' is an object pronoun, and 'theirs' shows ownership.",
+    "discuss": "Could you replace it with 'them'? Why not?"
+  },
+  {
+    "id": 55,
+    "sector": 2,
+    "skill": "Common noun",
+    "prompt": "Which sentence correctly uses a non-count noun?",
+    "options": [
+      "Please bring me two waters.",
+      "Please bring me some water.",
+      "Please bring me a homeworks.",
+      "Please bring me three furnitures."
+    ],
+    "correct": 1,
+    "hint": "Non-count nouns such as water, advice, and furniture do not take a plural s.",
+    "why": "'Water' is a non-count noun. Use words such as 'some' or 'a glass of' instead of counting it.",
+    "discuss": "What other non-count nouns can you think of?"
+  },
+  {
+    "id": 56,
+    "sector": 2,
+    "skill": "Plural noun",
+    "prompt": "What is the plural of 'moose'?",
+    "options": [
+      "mooses",
+      "meese",
+      "moose",
+      "moosen"
+    ],
+    "correct": 2,
+    "hint": "Some animal names stay the same in the plural.",
+    "why": "'Moose' is one of the few nouns whose singular and plural are the same. Other examples are 'deer' and 'sheep.'",
+    "discuss": "Why do you think English keeps the same form for some words?"
+  },
+  {
+    "id": 57,
+    "sector": 3,
+    "skill": "Possessive pronoun",
+    "prompt": "Which word completes the sentence correctly? The class finished ___ project.",
+    "options": [
+      "its",
+      "their",
+      "it's",
+      "they"
+    ],
+    "correct": 0,
+    "hint": "'Class' is one group. In American English, use the singular possessive.",
+    "why": "In American English, a collective noun like 'class' is treated as singular, so the possessive is 'its.' British English often uses 'their' instead.",
+    "discuss": "Which word fits if each member of the class finished their own project?"
+  },
+  {
+    "id": 58,
+    "sector": 3,
+    "skill": "Relative pronoun",
+    "prompt": "Which word does 'which' refer to in: We ate pasta, which was cold?",
+    "options": [
+      "pasta",
+      "We",
+      "ate",
+      "cold"
+    ],
+    "correct": 0,
+    "hint": "Ask what 'which' describes.",
+    "why": "'Which' refers to 'pasta.' The clause 'which was cold' describes the pasta.",
+    "discuss": "Why would 'who was cold' be wrong here?"
+  },
+  {
+    "id": 59,
+    "sector": 3,
+    "skill": "Indefinite pronoun",
+    "prompt": "Which sentence uses 'Everyone' with the correct verb?",
+    "options": [
+      "Everyone were invited.",
+      "Everyone was invited.",
+      "Everyone are invited.",
+      "Everyone be invited."
+    ],
+    "correct": 1,
+    "hint": "'Everyone' is singular in standard grammar.",
+    "why": "'Everyone' is an indefinite pronoun that takes a singular verb, so 'was' is correct.",
+    "discuss": "Does 'everybody' follow the same rule?"
+  },
+  {
+    "id": 60,
+    "sector": 3,
+    "skill": "Demonstrative pronoun",
+    "prompt": "Which word in this sentence is a demonstrative pronoun? Those who arrived early got the best seats.",
+    "options": [
+      "Those",
+      "who",
+      "early",
+      "seats"
+    ],
+    "correct": 0,
+    "hint": "Which word points to specific people and stands alone?",
+    "why": "'Those' points to specific people and stands in as the subject. 'Who' introduces a clause about those people, so it is relative.",
+    "discuss": "Can you find a demonstrative pronoun in something you wrote today?"
+  },
+  {
+    "id": 61,
+    "sector": 3,
+    "skill": "Possessive pronoun",
+    "prompt": "Which sentence uses a possessive pronoun correctly?",
+    "options": [
+      "The dog's bowl is her's.",
+      "The dog's bowl is hers.",
+      "The dogs bowl is hers'.",
+      "Hers' bowl is the dog."
+    ],
+    "correct": 1,
+    "hint": "Possessive pronouns never take an apostrophe.",
+    "why": "'Hers' is the correct possessive pronoun. 'Her's,' 'hers',' and 'Hers'' all add an apostrophe that does not belong.",
+    "discuss": "Why does 'its' follow the same rule as 'hers'?"
+  },
+  {
+    "id": 62,
+    "sector": 3,
+    "skill": "Abstract noun",
+    "prompt": "Which sentence uses an abstract noun as its subject?",
+    "options": [
+      "The apple fell.",
+      "The team cheered.",
+      "Honesty matters to our team.",
+      "Mr. Lopez laughed."
+    ],
+    "correct": 2,
+    "hint": "The subject is the word doing the action. What 'matters' here?",
+    "why": "'Honesty' is an abstract quality and is the subject of 'matters.' The other subjects are concrete (apple, Mr. Lopez) or collective (team).",
+    "discuss": "What abstract noun could be the subject of a sentence about your class?"
+  },
+  {
+    "id": 63,
+    "sector": 3,
+    "skill": "Personal pronoun",
+    "prompt": "In this sentence, who does 'they' refer to?",
+    "context": "The bakers baked bread, and they sold it at noon.",
+    "focus": "they",
+    "options": [
+      "bread",
+      "the bakers",
+      "noon",
+      "it"
+    ],
+    "correct": 1,
+    "hint": "Which group of people made the bread?",
+    "why": "'They' refers back to 'the bakers,' the people who baked and sold the bread. 'It' refers to the bread.",
+    "discuss": "What does 'it' refer to, and how do you know?"
+  },
+  {
+    "id": 64,
+    "sector": 3,
+    "skill": "Proper noun",
+    "prompt": "Which word in this sentence is a proper noun?",
+    "context": "Our neighbor adopted a puppy from Seattle.",
+    "options": [
+      "neighbor",
+      "puppy",
+      "Seattle",
+      "adopted"
+    ],
+    "correct": 2,
+    "hint": "Look for the name of one specific place.",
+    "why": "'Seattle' is a specific city name, so it is a proper noun. 'Neighbor' and 'puppy' are common nouns, and 'adopted' is a verb.",
+    "discuss": "Why is 'neighbor' lowercase, even though it describes one specific person?"
   }
 ];
 export const CHAMBERS = ["Noun Forge", "Pronoun Portal", "Repair Lab", "Master Lock"];

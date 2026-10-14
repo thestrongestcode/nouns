@@ -5,12 +5,15 @@ import { rankPlayers, teamSummary, ordinal, joinNames } from './scoring.js';
 const app = document.querySelector('#app');
 const statusText = document.querySelector('#status-label');
 const KEY = 'word-vault-multiplayer-session-v1';
+const STORE = __DEMO__ ? sessionStorage : localStorage;
+let hintOpen = false;
+let hintKey = '';
 const STAGES = ['Noun Forge','Pronoun Portal','Repair Lab','Master Lock'];
 const marks = ['A','B','C','D'];
 let DEFAULT_ROOM = new URLSearchParams(location.search).get('room')?.toUpperCase() || '';
 
 let session = null;
-try { session = JSON.parse(localStorage.getItem(KEY) || 'null'); } catch {}
+try { session = JSON.parse(STORE.getItem(KEY) || 'null'); } catch {}
 let snapshot = null;
 let client = null;
 let channel = null;
@@ -33,6 +36,12 @@ const highlighted = (text, target) => {
 };
 
 async function api(action, data={}) {
+  if (__DEMO__) {
+    const { demoRequest } = await import('./demo-api.js');
+    const { status, json } = await demoRequest({ action, ...data });
+    if (status >= 400) throw Object.assign(new Error(json.error || 'Server error'), { status });
+    return json;
+  }
   const resp = await fetch('/api/game', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action,...data})});
   const json = await resp.json().catch(()=>null);
   if (!json) {
@@ -58,13 +67,13 @@ function getSeconds(s) {
   return Math.max(0,Math.ceil(s.seconds - (Date.now() + clockSkew - Date.parse(s.startedAt)) / 1000));
 }
 function setStatus(text){statusText.textContent=text;}
-function saveSession(v) {session=v;localStorage.setItem(KEY,JSON.stringify(v));}
+function saveSession(v) {session=v;STORE.setItem(KEY,JSON.stringify(v));}
 function clearSession() {
   if (channel && client) client.removeChannel(channel);
   channel = null;
   clearInterval(poller);
   clearInterval(ticker);
-  localStorage.removeItem(KEY);
+  STORE.removeItem(KEY);
   session=null;snapshot=null;sending=false;clearError();
   DEFAULT_ROOM='';lastSignature='';lastTimeUpKey='';clockSkew=0;
   history.replaceState(null,'',location.pathname);
@@ -72,8 +81,12 @@ function clearSession() {
 }
 function badge(text,cls=''){return `<span class="chip ${cls}">${escape(text)}</span>`;}
 function stageCards(s) {
-  const active=Math.min(3,Math.floor(s.index / 8));
-  return `<div class="stages">${STAGES.map((name,i)=>`<div class="stage ${i<active?'completed':i===active?'active':''} ${s.questionCount===16&&i>1?'hidden-stage':''}"><small>CHAMBER ${String(i+1).padStart(2,'0')}</small><strong>${escape(name)}</strong><span>${i<active?'✓ Complete':i===active?'● In progress':s.questionCount===16&&i>1?'Full vault only':'Locked'}</span></div>`).join('')}</div>`;
+  const current = s.question ? s.question.sector : STAGES.length;
+  return `<div class="stages">${STAGES.map((name,i)=>{
+    const state = i<current ? 'completed' : i===current ? 'active' : '';
+    const label = i<current ? '✓ Complete' : i===current ? '● In progress' : 'Locked';
+    return `<div class="stage ${state}"><small>CHAMBER ${String(i+1).padStart(2,'0')}</small><strong>${escape(name)}</strong><span>${label}</span></div>`;
+  }).join('')}</div>`;
 }
 function scoreboard(s) {
   const rows=rankPlayers(s.players);
@@ -88,7 +101,7 @@ function scoreboard(s) {
 }
 function intro() {
   return `<section class="intro card">
-    <div class="intro-copy"><div class="eyebrow">A LIVE CLASSROOM GRAMMAR CHALLENGE</div><h1>Crack the<br><span>Word Vault.</span></h1><p>32 original noun and pronoun puzzles. One shared room. Every student on their own device. Your grammar knowledge is the key.</p><div class="facts"><span>✳ 16 grammar types</span><span>⌁ 4 chambers</span><span>◉ Live leaderboard</span></div></div>
+    <div class="intro-copy"><div class="eyebrow">A LIVE CLASSROOM GRAMMAR CHALLENGE</div><h1>Crack the<br><span>Word Vault.</span></h1><p>64 noun and pronoun puzzles, with a different mix in every game. One shared room. Every student on their own device. Your grammar knowledge is the key.</p><div class="facts"><span>✳ 16 grammar types</span><span>⌁ 4 chambers</span><span>◉ Live leaderboard</span></div></div>
     <div class="vault-visual" aria-hidden="true"><div class="orbital one"></div><div class="orbital two"></div><div class="core">✳</div><div class="spark top"></div><div class="spark bottom"></div></div>
   </section>
   <section class="entry-grid">
@@ -124,6 +137,9 @@ function options(s) {
 }
 function questionView(s) {
   const q=s.question,host=s.role==='host',revealed=s.status==='reveal';
+  const cardKey=`${s.code}:${s.index}`;
+  if(hintKey!==cardKey){hintKey=cardKey;hintOpen=false;}
+  const aidsHtml=`<div class="aids"><button class="textlink" data-action="read" type="button">Read aloud</button>${q.hint?`<button class="textlink" data-action="hint" type="button" aria-expanded="${hintOpen}">${hintOpen?'Hide hint':'Need a hint?'}</button>`:''}</div>${hintOpen&&q.hint?`<div class="hint-box"><b>Hint:</b> ${escape(q.hint)}</div>`:''}`;
   const seconds=getSeconds(s);
   const stageLabel=q.chamber;
   const round=(s.index+1);
@@ -133,6 +149,7 @@ function questionView(s) {
     <div class="progress"><div style="width:${progress}%"></div></div>
     <h2 class="prompt">${escape(q.prompt)}</h2>
     ${q.context?`<blockquote class="context">${highlighted(q.context,q.focus)}</blockquote>`:''}
+    ${aidsHtml}
     ${options(s)}
     ${revealed?`<div class="explanation"><div class="eyebrow">ANSWER EXPLAINED · ${escape(q.skill)}</div><strong>${marks[q.correct]}. ${escape(q.options[q.correct])}</strong><p>${escape(q.why)}</p><div class="discuss">DISCUSSION PROMPT: ${escape(q.discuss)}</div>${!host?`<p class="personal-result">${s.answered?`Your answer: ${s.myChoice===q.correct?'correct':'incorrect'} · +${q.myPoints} points`:'You did not answer this round.'}</p>`:''}</div>`:
       `<div class="response-state">${host?`<strong>${s.answersReceived} / ${s.players.length}</strong> answers submitted · Reveal when you're ready.`:s.answered?'✓ Answer locked! Waiting for the teacher to reveal.':seconds===0?'Time is up. Waiting for the teacher.':'Choose one answer before time runs out.'}</div>`}
@@ -148,7 +165,8 @@ function finished(s) {
   const myCard=me&&s.myResult?`<div class="my-result"><small>YOUR RESULT</small><strong>${me.tied?'Tied for ':''}${ordinal(me.rank)} of ${ranked.length}</strong><span>${me.score} points · ${s.myResult.correct} of ${s.playedCount} correct</span></div>`:'';
   const winnerCard=best.length?`<div class="winner"><small>${best.length>1?'TIED FOR FIRST':'TOP SCORE'}</small><strong>${escape(joinNames(best.map(p=>p.name)))}</strong><span>${best[0].score} points</span></div>`:'';
   const teamCard=teams&&(teams.leader||teams.tied)?`<div class="team-result ${teams.leader?teams.leader.toLowerCase():''}"><small>TEAM RESULT</small><strong>${teams.leader?`Team ${teams.leader} wins`:'The teams tied'}</strong><span>Average points per player: Team A ${teams.A.average.toFixed(1)}, Team B ${teams.B.average.toFixed(1)}</span></div>`:'';
-  const debrief=host?`<div class="note"><b>Teacher debrief:</b> Ask students to defend one difficult answer. Reflexive vs. intensive pronouns and singular vs. possessive nouns are especially useful to revisit.</div>`:'';
+  const weakest=s.report?.[0]?.skill;
+  const debrief=host?`<div class="note"><b>Teacher debrief:</b> ${weakest?`Most of the class missed items on <b>${escape(weakest)}</b>. Start the discussion there, then ask a student to defend an answer they found hard.`:'Ask a student to defend an answer they found hard.'}</div>`:'';
   return `${headerRoom(s)}<div class="content-grid"><section class="card play-card result-card"><div class="victory">✳</div><div class="eyebrow">MISSION COMPLETE</div><h2>The vault is unlocked.</h2><p class="lead">Great work examining how nouns and pronouns function in real sentences.</p>${myCard}${winnerCard}${teamCard}${debrief}${s.report?.length?`<div class="mastery"><h3>Concepts to review</h3>${s.report.slice(0,5).map(x=>`<div><span>${escape(x.skill)}</span><b>${x.correct}/${x.total} correct</b></div>`).join('')}</div>`:`<p class="hint">No missed concepts were recorded. Excellent work!</p>`}<button class="button primary" data-action="leave">Return to home</button></section>${scoreboard(s)}</div>`;
 }
 function focusSelector() {
@@ -160,10 +178,20 @@ function focusSelector() {
   if(d.action) return `[data-action="${d.action}"]`;
   return el.id ? '#'+el.id : '';
 }
+function readAloud() {
+  const q=snapshot?.question;
+  if(!q || !('speechSynthesis' in window)) {showError(new Error('Read aloud is not available in this browser.'));return;}
+  const text=[q.prompt,q.context,...q.options.map((o,i)=>`${marks[i]}. ${o}`)].filter(Boolean).join('. ');
+  speechSynthesis.cancel();
+  speechSynthesis.speak(new SpeechSynthesisUtterance(text));
+}
+function demoNote() {
+  return '<div class="notice demo-note" role="note">Practice build on GitHub Pages. Each tab is one device, and tabs in this browser share a room. For a real classroom with students on their own devices, use the Vercel version.</div>';
+}
 function render() {
   const s=snapshot;
   const keep=focusSelector();
-  app.innerHTML=(s ? `<div class="room-wrap ${s.status} ${s.role}">${s.status==='lobby'?lobby(s):s.status==='finished'?finished(s):questionView(s)}<div class="bottomrow"><button class="smalllink" data-action="leave">Leave this room</button><span>Make your words count.</span></div></div>` : intro()) + errorBox();
+  app.innerHTML=(__DEMO__?demoNote():'')+(s ? `<div class="room-wrap ${s.status} ${s.role}">${s.status==='lobby'?lobby(s):s.status==='finished'?finished(s):questionView(s)}<div class="bottomrow"><button class="smalllink" data-action="leave">Leave this room</button><span>Make your words count.</span></div></div>` : intro()) + errorBox();
   if(keep) app.querySelector(keep)?.focus({preventScroll:true});
 }
 function announce(text) {
@@ -264,6 +292,8 @@ app.addEventListener('submit', async event=>{
 app.addEventListener('click', async event=>{
   const control=event.target.closest('[data-command],[data-action],[data-choice]');
   if(!control)return;
+  if(control.dataset.action==='read'){readAloud();return;}
+  if(control.dataset.action==='hint'){hintOpen=!hintOpen;render();return;}
   if(control.dataset.action==='leave'){clearSession();return;}
   if(control.dataset.action==='copy-link'){
     const link=location.origin+location.pathname+'?room='+encodeURIComponent(snapshot.code);

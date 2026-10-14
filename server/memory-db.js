@@ -1,20 +1,25 @@
-import { randomUUID } from 'node:crypto';
+// In-memory stand-in for the parts of Supabase the game uses. It mirrors supabase/schema.sql:
+// unique constraints, the vault_submit and vault_control functions, and the event feed.
+// Used by the tests, the local mock server, and the static Pages demo (which saves the tables
+// to browser storage). If you change the SQL scoring or state rules, change them here too.
 
-// In-memory stand-in for the parts of Supabase that api/game.js uses.
-// It mirrors supabase/schema.sql (unique constraints, vault_submit, vault_control)
-// so the game can be played locally and tested without any accounts.
-// If you change the SQL scoring or state rules, change them here too.
+const newId = () => globalThis.crypto.randomUUID();
 
-export function createFakeDatabase() {
-  const tables = { vault_rooms: [], vault_players: [], vault_answers: [], vault_events: [] };
-  const uniques = {
-    vault_rooms: [['code']],
-    vault_players: [['token_hash'], ['room_id', 'nickname']],
-    vault_answers: [['player_id', 'question_index']],
-    vault_events: [],
+const UNIQUE = {
+  vault_rooms: [['code']],
+  vault_players: [['token_hash'], ['room_id', 'nickname']],
+  vault_answers: [['player_id', 'question_index']],
+  vault_events: [],
+};
+
+export function createMemoryDatabase(initial) {
+  const tables = {
+    vault_rooms: [], vault_players: [], vault_answers: [], vault_events: [],
+    ...(initial || {}),
   };
   let offsetMs = 0;
-  let nextId = 0;
+  const maxId = rows => rows.reduce((n, r) => Math.max(n, Number(r.id) || 0), 0);
+  let nextId = Math.max(maxId(tables.vault_answers), maxId(tables.vault_events));
   const now = () => Date.now() + offsetMs;
   const stamp = () => new Date(now()).toISOString();
 
@@ -22,12 +27,12 @@ export function createFakeDatabase() {
     switch (table) {
       case 'vault_rooms':
         return {
-          id: randomUUID(), host_name: 'Teacher', status: 'lobby', mode: 'individual',
+          id: newId(), host_name: 'Teacher', status: 'lobby', mode: 'individual',
           question_count: 16, question_index: 0, seconds_per_question: 30,
           question_started_at: null, created_at: stamp(), ...row,
         };
       case 'vault_players':
-        return { id: randomUUID(), team: 'A', score: 0, joined_at: stamp(), ...row };
+        return { id: newId(), team: 'A', score: 0, joined_at: stamp(), ...row };
       case 'vault_answers':
         return { id: ++nextId, answered_at: stamp(), ...row };
       default:
@@ -57,7 +62,7 @@ export function createFakeDatabase() {
       const rows = tables[this.table];
       if (this.mode === 'insert') {
         const row = withDefaults(this.table, this.row);
-        for (const keys of uniques[this.table]) {
+        for (const keys of UNIQUE[this.table]) {
           if (rows.some(r => keys.every(k => r[k] === row[k]))) {
             return { data: null, error: { code: '23505', message: 'duplicate key value violates unique constraint' } };
           }
@@ -66,7 +71,7 @@ export function createFakeDatabase() {
         return this.finish([row]);
       }
       let found = rows.filter(r => this.filters.every(([c, v]) => r[c] === v));
-      // Apply sorts from the last key to the first; Array.sort is stable.
+      // Sort by the last key first; Array.sort is stable, so earlier keys win.
       for (const [col, asc] of [...this.sorts].reverse()) {
         found = found.slice().sort((a, b) => (a[col] > b[col] ? 1 : a[col] < b[col] ? -1 : 0) * (asc ? 1 : -1));
       }
@@ -99,11 +104,11 @@ export function createFakeDatabase() {
     const valid = n => Number.isInteger(n) && n >= 0 && n <= 3;
     if (!valid(p_choice) || !valid(p_correct_choice)) throw new Error('Invalid answer choice');
     if (!tables.vault_players.some(p => p.id === p_player && p.room_id === p_room)) throw new Error('Player not in room');
-    const correct = p_choice === p_correct_choice;
-    const points = !correct ? 0 : elapsedSeconds(room) <= 10 ? 15 : 10;
     if (tables.vault_answers.some(a => a.player_id === p_player && a.question_index === p_question)) {
       throw new Error('You already answered this question');
     }
+    const correct = p_choice === p_correct_choice;
+    const points = !correct ? 0 : elapsedSeconds(room) <= 10 ? 15 : 10;
     tables.vault_answers.push(withDefaults('vault_answers', {
       room_id: p_room, player_id: p_player, question_index: p_question, choice: p_choice, correct, points,
     }));
