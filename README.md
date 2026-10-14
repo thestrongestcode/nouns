@@ -4,6 +4,19 @@
 
 Built with **Vite (website)** + **Vercel Functions (server-verified answers)** + **Supabase Postgres/Realt​ime (shared game state)**. No student accounts needed.
 
+## Do not host this on GitHub Pages
+
+GitHub Pages only serves static files. This game also needs the `/api/game` server function, and that only runs on Vercel (step 3 below). If you enable Pages for this repo you will see a 404, or a page that loads but can never start a game. Deploy on Vercel instead; GitHub is only where the code lives.
+
+## Try it locally in 10 seconds (no accounts needed)
+
+```bash
+npm install
+npm run dev:mock
+```
+
+Open the address it prints. Rooms live in memory (an in-memory stand-in for Supabase in `dev/fake-db.js`) and disappear when you stop it. Open the page in several browser windows to act as the teacher and students.
+
 ## Deploy to GitHub + Vercel (about 4 setup steps)
 
 1. **Create Supabase project:** at https://supabase.com/dashboard. Go to **SQL Editor** → New Query, paste all of [`supabase/schema.sql`](supabase/schema.sql), and click **Run**. This creates the room/player/answer tables, scoring functions and a Realtime event feed.
@@ -35,6 +48,9 @@ Then open your Vercel site, choose **Host a classroom**, share its six-character
 - Students join by room code and nickname, no account needed.
 - Everyone sees the *same question at the same time*. Students may submit one answer per question.
 - **10 points** for a correct answer, **+5** additional points if it was submitted within the first 10 seconds. Incorrect/unanswered = 0. Scores update after teacher reveals the answer.
+- Answer choices are shuffled for each room, so the right answer is not always in the same slot.
+- Team mode compares **average points per player**, so a team with one extra student has no advantage.
+- The final screen shows each student their rank and how many cards they got right, names every player tied for first, and announces the winning team.
 - The teacher controls reveal and next card (or may end the game early). Once revealed, everyone sees the answer explanation and vote distribution.
 - The teacher can use the end-of-game weak-concepts report for discussion.
 
@@ -47,11 +63,16 @@ word-vault-multiplayer/
 ├── index.html                 # HTML entry
 ├── src/
 │   ├── main.js                # host/student UI, live subscriptions
+│   ├── scoring.js             # ranks, ties, team averages (unit tested)
 │   └── styles.css             # responsive visual design
 ├── api/game.js                # Vercel serverless API (secure checking)
-├── server/questions.js        # original answer key (SERVER ONLY)
+├── server/
+│   ├── questions.js           # original answer key (SERVER ONLY)
+│   ├── game-logic.js          # answer shuffling
+│   └── db.js                  # Supabase connection (swappable for tests)
 ├── supabase/schema.sql        # paste once in SQL Editor
-├── tests/quiz.test.mjs
+├── dev/                       # local mock: fake-db.js, mock-server.mjs
+├── tests/                     # npm test
 ├── .env.example               # placeholders only
 ├── .gitignore
 ├── package.json
@@ -73,7 +94,7 @@ cp .env.example .env
 vercel dev
 ```
 
-The plain `npm run dev` command starts **the frontend only**, not the `/api/game` route. Use `vercel dev` for a fully playable local version or deploy on Vercel.
+`npm run dev:mock` is the quickest way to play locally (see above). The plain `npm run dev` command starts **the frontend only**, not the `/api/game` route. Use `vercel dev` to test against your real Supabase project, or deploy on Vercel.
 
 ## Data, privacy and limits
 
@@ -83,13 +104,16 @@ The plain `npm run dev` command starts **the frontend only**, not the `/api/game
 - Supabase Realtime pushes harmless change notifications, while HTTP handles all protected game data. Fallback polling refreshes every 6 seconds if Realtime drops.
 - Classroom prototype: 60 player cap, not load-tested at scale. It does not include production abuse protection, CAPTCHA, host recovery, or managed retention. Use appropriate rate limiting before public/high-traffic use.
 - A new room requires a new code; there is no replay button yet.
+- **A public GitHub repository exposes the answer key.** Anyone can open `server/questions.js`. For real classroom use, set the repository to **Private** (Settings > General > Danger Zone); Vercel can still deploy private repositories.
+- To delete old rooms, players and answers, run this in the Supabase SQL Editor (it cascades): `delete from public.vault_rooms where created_at < now() - interval '30 days';`
 
 **Troubleshooting:**
 - “Server not configured” → check `SUPABASE_URL` and `SUPABASE_SECRET_KEY` in Vercel; redeploy.
 - “Request could not be completed” → check you ran the entire SQL script and confirm the key permissions in Supabase.
 - Students stuck on the previous screen → check `SUPABASE_PUBLISHABLE_KEY` and Realtime publication (`vault_events`), or allow up to 6 seconds for fallback polling.
+- A `404` on `github.io`, or "The game server was not found": the site is on GitHub Pages, which cannot run the API. Deploy on Vercel instead.
 - `404` at `/api/game` → confirm the Vercel import uses the repository root as the project root and hasn't been deployed as a static-only file upload.
 
 ### Verification status
 
-The question-bank unit tests and JavaScript syntax checks passed. A live Supabase/Vercel deployment and production build were **not** executed in this environment; you should test one teacher and two student devices after adding your own Supabase keys.
+`npm test` runs the question-bank checks, unit tests for the shuffle and scoring helpers, and API tests that play full games (join, answer, reveal, early finish, late and duplicate answers) against the in-memory database. The interface was also played end to end in a headless browser with five phone-sized student windows plus a host. A live Supabase/Vercel deployment has **not** been tested here, and `supabase/schema.sql` is mirrored by `dev/fake-db.js` rather than run, so test one teacher and two student devices after adding your own Supabase keys.

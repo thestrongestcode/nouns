@@ -1,12 +1,13 @@
 import './styles.css';
 import { createClient } from '@supabase/supabase-js';
+import { rankPlayers, teamSummary, ordinal, joinNames } from './scoring.js';
 
 const app = document.querySelector('#app');
 const statusText = document.querySelector('#status-label');
 const KEY = 'word-vault-multiplayer-session-v1';
 const STAGES = ['Noun Forge','Pronoun Portal','Repair Lab','Master Lock'];
 const marks = ['A','B','C','D'];
-const DEFAULT_ROOM = new URLSearchParams(location.search).get('room')?.toUpperCase() || '';
+let DEFAULT_ROOM = new URLSearchParams(location.search).get('room')?.toUpperCase() || '';
 
 let session = null;
 try { session = JSON.parse(localStorage.getItem(KEY) || 'null'); } catch {}
@@ -18,6 +19,10 @@ let ticker = null;
 let errorNotice = '';
 let sending = false;
 let lastFetch = 0;
+let clockSkew = 0; // server time minus this device's time, so a wrong device clock cannot break the timer
+let lastSignature = '';
+let lastTimeUpKey = '';
+const announcer = document.querySelector('#announcer');
 
 const escape = val => String(val ?? '').replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
 const highlighted = (text, target) => {
@@ -29,8 +34,14 @@ const highlighted = (text, target) => {
 
 async function api(action, data={}) {
   const resp = await fetch('/api/game', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action,...data})});
-  const json = await resp.json().catch(()=>({error:'The server returned an invalid response.'}));
-  if (!resp.ok) throw new Error(json.error || 'Server error');
+  const json = await resp.json().catch(()=>null);
+  if (!json) {
+    const missing = resp.status === 404 || resp.status === 405;
+    throw Object.assign(new Error(missing
+      ? 'The game server was not found. This site needs the Vercel deployment with the /api folder; GitHub Pages cannot run it (see the README).'
+      : 'The server returned an invalid response.'), {status: resp.status});
+  }
+  if (!resp.ok) throw Object.assign(new Error(json.error || 'Server error'), {status: resp.status});
   return json;
 }
 
@@ -44,7 +55,7 @@ function clearError() { errorNotice=''; }
 function errorBox(){ return `<div id="error" role="alert" class="notice error" ${errorNotice?'':'hidden'}>${escape(errorNotice)}</div>`; }
 function getSeconds(s) {
   if (!s.startedAt) return s.seconds;
-  return Math.max(0,Math.ceil(s.seconds - (Date.now() - Date.parse(s.startedAt)) / 1000));
+  return Math.max(0,Math.ceil(s.seconds - (Date.now() + clockSkew - Date.parse(s.startedAt)) / 1000));
 }
 function setStatus(text){statusText.textContent=text;}
 function saveSession(v) {session=v;localStorage.setItem(KEY,JSON.stringify(v));}
@@ -55,6 +66,7 @@ function clearSession() {
   clearInterval(ticker);
   localStorage.removeItem(KEY);
   session=null;snapshot=null;sending=false;clearError();
+  DEFAULT_ROOM='';lastSignature='';lastTimeUpKey='';clockSkew=0;
   history.replaceState(null,'',location.pathname);
   setStatus('Ready to play');render();
 }
@@ -64,14 +76,15 @@ function stageCards(s) {
   return `<div class="stages">${STAGES.map((name,i)=>`<div class="stage ${i<active?'completed':i===active?'active':''} ${s.questionCount===16&&i>1?'hidden-stage':''}"><small>CHAMBER ${String(i+1).padStart(2,'0')}</small><strong>${escape(name)}</strong><span>${i<active?'✓ Complete':i===active?'● In progress':s.questionCount===16&&i>1?'Full vault only':'Locked'}</span></div>`).join('')}</div>`;
 }
 function scoreboard(s) {
-  const rows=s.players.slice().sort((a,b)=>b.score-a.score||a.name.localeCompare(b.name));
+  const rows=rankPlayers(s.players);
+  const noScoresYet=rows.every(p=>p.score===0); // everyone is tied at 0, so ranks would all read "1"
   let teams='';
   if(s.mode==='teams') {
-    const totalA=rows.filter(x=>x.team==='A').reduce((n,p)=>n+p.score,0);
-    const totalB=rows.filter(x=>x.team==='B').reduce((n,p)=>n+p.score,0);
-    teams=`<div class="team-scores"><div class="team a"><small>TEAM A</small><b>${totalA}</b></div><div class="team b"><small>TEAM B</small><b>${totalB}</b></div></div>`;
+    const t=teamSummary(s.players);
+    const card=key=>`<div class="team ${key.toLowerCase()} ${t.leader===key?'leading':''}"><small>TEAM ${key}</small><b>${t[key].average.toFixed(1)}</b><span>avg per player</span><span>${t[key].count} ${t[key].count===1?'player':'players'} · ${t[key].total} pts</span></div>`;
+    teams=`<div class="team-scores">${card('A')}${card('B')}</div>`;
   }
-  return `<aside class="score-panel"><div class="panelhead"><h3>Leaderboard</h3>${badge(rows.length+' joined')}</div>${teams}<ol class="scores">${rows.map((p,i)=>`<li class="${p.id===s.selfId?'me':''}"><span class="rank">${i+1}</span><span class="player-name">${escape(p.name)} ${s.mode==='teams'?`<em>${p.team}</em>`:''}</span><b>${p.score}</b></li>`).join('') || '<li class="empty">Waiting for players…</li>'}</ol><p class="muted tiny">10 pts correct · +5 speed bonus if correct within 10 seconds. Scores update after each reveal.</p></aside>`;
+  return `<aside class="score-panel"><div class="panelhead"><h3>Leaderboard</h3>${badge(rows.length+' joined')}</div>${teams}<ol class="scores">${rows.map(p=>`<li class="${p.id===s.selfId?'me':''}"><span class="rank">${noScoresYet?'–':p.rank}</span><span class="player-name">${escape(p.name)} ${s.mode==='teams'?`<em>${p.team}</em>`:''}</span><b>${p.score}</b></li>`).join('') || '<li class="empty">Waiting for players…</li>'}</ol><p class="muted tiny">10 pts correct · +5 speed bonus if correct within 10 seconds. Scores update after each reveal.${s.mode==='teams'?' Teams are compared by average points per player.':''}</p></aside>`;
 }
 function intro() {
   return `<section class="intro card">
@@ -127,13 +140,41 @@ function questionView(s) {
   </section>${scoreboard(s)}</div>`;
 }
 function finished(s) {
-  const winners=s.players.slice().sort((a,b)=>b.score-a.score);
-  const top=winners[0];
-  return `${headerRoom(s)}<div class="content-grid"><section class="card play-card result-card"><div class="victory">✳</div><div class="eyebrow">MISSION COMPLETE</div><h2>The vault is unlocked.</h2><p class="lead">Great work examining how nouns and pronouns function in real sentences.</p>${top?`<div class="winner"><small>TOP SCORE</small><strong>${escape(top.name)}</strong><span>${top.score} points</span></div>`:''}<div class="note"><b>Teacher debrief:</b> Ask students to defend one difficult answer. Reflexive vs. intensive pronouns and singular vs. possessive nouns are especially useful to revisit.</div>${s.report?.length?`<div class="mastery"><h3>Concepts to review</h3>${s.report.slice(0,5).map(x=>`<div><span>${escape(x.skill)}</span><b>${x.correct}/${x.total} correct</b></div>`).join('')}</div>`:`<p class="hint">No missed concepts were recorded — excellent work!</p>`}<button class="button primary" data-action="leave">Return to home</button></section>${scoreboard(s)}</div>`;
+  const ranked=rankPlayers(s.players);
+  const best=ranked.filter(p=>p.rank===1);
+  const me=ranked.find(p=>p.id===s.selfId);
+  const teams=s.mode==='teams'?teamSummary(s.players):null;
+  const host=s.role==='host';
+  const myCard=me&&s.myResult?`<div class="my-result"><small>YOUR RESULT</small><strong>${me.tied?'Tied for ':''}${ordinal(me.rank)} of ${ranked.length}</strong><span>${me.score} points · ${s.myResult.correct} of ${s.playedCount} correct</span></div>`:'';
+  const winnerCard=best.length?`<div class="winner"><small>${best.length>1?'TIED FOR FIRST':'TOP SCORE'}</small><strong>${escape(joinNames(best.map(p=>p.name)))}</strong><span>${best[0].score} points</span></div>`:'';
+  const teamCard=teams&&(teams.leader||teams.tied)?`<div class="team-result ${teams.leader?teams.leader.toLowerCase():''}"><small>TEAM RESULT</small><strong>${teams.leader?`Team ${teams.leader} wins`:'The teams tied'}</strong><span>Average points per player: Team A ${teams.A.average.toFixed(1)}, Team B ${teams.B.average.toFixed(1)}</span></div>`:'';
+  const debrief=host?`<div class="note"><b>Teacher debrief:</b> Ask students to defend one difficult answer. Reflexive vs. intensive pronouns and singular vs. possessive nouns are especially useful to revisit.</div>`:'';
+  return `${headerRoom(s)}<div class="content-grid"><section class="card play-card result-card"><div class="victory">✳</div><div class="eyebrow">MISSION COMPLETE</div><h2>The vault is unlocked.</h2><p class="lead">Great work examining how nouns and pronouns function in real sentences.</p>${myCard}${winnerCard}${teamCard}${debrief}${s.report?.length?`<div class="mastery"><h3>Concepts to review</h3>${s.report.slice(0,5).map(x=>`<div><span>${escape(x.skill)}</span><b>${x.correct}/${x.total} correct</b></div>`).join('')}</div>`:`<p class="hint">No missed concepts were recorded. Excellent work!</p>`}<button class="button primary" data-action="leave">Return to home</button></section>${scoreboard(s)}</div>`;
+}
+function focusSelector() {
+  const el=document.activeElement;
+  if(!el || el===app || !app.contains(el)) return '';
+  const d=el.dataset||{};
+  if(d.choice!==undefined) return `[data-choice="${d.choice}"]`;
+  if(d.command) return `[data-command="${d.command}"]`;
+  if(d.action) return `[data-action="${d.action}"]`;
+  return el.id ? '#'+el.id : '';
 }
 function render() {
   const s=snapshot;
-  app.innerHTML=(s ? `<div class="room-wrap">${s.status==='lobby'?lobby(s):s.status==='finished'?finished(s):questionView(s)}<div class="bottomrow"><button class="smalllink" data-action="leave">Leave this room</button><span>Make your words count.</span></div></div>` : intro()) + errorBox();
+  const keep=focusSelector();
+  app.innerHTML=(s ? `<div class="room-wrap ${s.status} ${s.role}">${s.status==='lobby'?lobby(s):s.status==='finished'?finished(s):questionView(s)}<div class="bottomrow"><button class="smalllink" data-action="leave">Leave this room</button><span>Make your words count.</span></div></div>` : intro()) + errorBox();
+  if(keep) app.querySelector(keep)?.focus({preventScroll:true});
+}
+function announce(text) {
+  if(!announcer) return;
+  announcer.textContent='';
+  setTimeout(()=>{announcer.textContent=text;},50);
+}
+function announceChange(prev,next) {
+  if(next.status==='playing' && (!prev || prev.status!=='playing' || prev.index!==next.index)) announce(`Card ${next.index+1} of ${next.questionCount}. ${getSeconds(next)} seconds.`);
+  else if(next.status==='reveal' && prev?.status!=='reveal') announce(next.role==='player' ? (next.answered ? (next.myChoice===next.question.correct ? 'Answer revealed. You were correct.' : 'Answer revealed. You were not correct.') : 'Answer revealed. You did not answer.') : 'Answer revealed.');
+  else if(next.status==='finished' && prev?.status!=='finished') announce('The game is over.');
 }
 function updateClock() {
   if(!snapshot || snapshot.status!=='playing') return;
@@ -143,6 +184,8 @@ function updateClock() {
   el.textContent=`◷ ${seconds}s`;
   el.classList.toggle('urgent',seconds<=10);
   if(seconds===0) {
+    const key=snapshot.code+':'+snapshot.index;
+    if(lastTimeUpKey!==key){lastTimeUpKey=key;announce('Time is up.');}
     document.querySelectorAll('[data-choice]').forEach(b=>b.disabled=true);
     const note=document.querySelector('.response-state');
     if(note && snapshot.role==='player' && !snapshot.answered) note.textContent='Time is up. Waiting for the teacher.';
@@ -152,13 +195,27 @@ async function refresh() {
   if(!session) return;
   const issued=++lastFetch;
   try {
+    const asked=Date.now();
     const data=await api('state', {code:session.code,token:session.token});
     if(issued!==lastFetch || !session) return;
-    snapshot=data;clearError();render();updateClock();
+    if(data.serverTime) clockSkew=data.serverTime-(asked+Date.now())/2;
+    // Only rebuild the page when something changed. Rebuilding every poll threw away keyboard focus.
+    const {serverTime,...stable}=data;
+    const signature=JSON.stringify(stable);
+    const hadError=!!errorNotice;
+    const previous=snapshot;
+    snapshot=data;clearError();
+    if(signature!==lastSignature || hadError) {lastSignature=signature;render();announceChange(previous,data);}
+    updateClock();
     setStatus('Room '+data.code+' · connected');
     if(!channel) connectRealtime(data.roomId);
   } catch(err) {
     if(issued!==lastFetch) return;
+    if(err.status===403 || err.status===404) {
+      clearSession();
+      showError(new Error('That room is no longer available. Ask your teacher for a new code.'));
+      return;
+    }
     showError(err);
     setStatus('Connection issue · retrying');
   }

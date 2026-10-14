@@ -1,16 +1,10 @@
-import { createClient } from '@supabase/supabase-js';
 import { randomBytes, createHash, timingSafeEqual } from 'node:crypto';
 import { QUESTIONS, CHAMBERS } from '../server/questions.js';
+import { database } from '../server/db.js';
+import { optionOrder, shuffledCorrectIndex } from '../server/game-logic.js';
 
 const SUPABASE_URL = process.env.SUPABASE_URL;
-const SECRET = process.env.SUPABASE_SECRET_KEY;
 const PUBLIC = process.env.SUPABASE_PUBLISHABLE_KEY;
-let db;
-function database() {
-  if (!SUPABASE_URL || !SECRET) throw new Error('Server not configured. Set SUPABASE_URL and SUPABASE_SECRET_KEY in Vercel.');
-  if (!db) db = createClient(SUPABASE_URL, SECRET, { auth: { autoRefreshToken: false, persistSession: false }});
-  return db;
-}
 const hash = text => createHash('sha256').update(text).digest('hex');
 const token = () => randomBytes(32).toString('hex');
 const codeChars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -105,11 +99,17 @@ async function getState(body) {
   }
   const mine = auth.player ? answers.find(a=>a.player_id===auth.player.id) : null;
   const revealed = room.status === 'reveal';
+  const order = question ? optionOrder(room.id, question.id) : null;
   let report = null;
+  let myResult = null;
   if (room.status === 'finished') {
     const {data:history,error:he} = await database().from('vault_answers')
-      .select('question_index,correct').eq('room_id', room.id);
+      .select('player_id,question_index,correct').eq('room_id', room.id);
     check(he);
+    if (auth.player) {
+      const own = history.filter(a => a.player_id === auth.player.id);
+      myResult = { answered: own.length, correct: own.filter(a => a.correct).length };
+    }
     const summaries = new Map();
     for (const answer of history) {
       const skill = QUESTIONS[answer.question_index]?.skill;
@@ -128,11 +128,15 @@ async function getState(body) {
     seconds:room.seconds_per_question,startedAt:room.question_started_at,
     players:players.map(p=>({id:p.id,name:p.nickname,team:p.team,score:p.score})),
     answersReceived:answers.length, answered:!!mine, myChoice:mine?.choice ?? null,
-    report,
+    report,myResult,
+    // Cards that were actually played. A game ended early stops on the current card.
+    playedCount:room.status==='finished' ? Math.min(room.question_count, index + 1) : null,
+    serverTime:Date.now(),
     question:question ? {
       id:question.id,sector:question.sector,chamber:CHAMBERS[question.sector],
-      prompt:question.prompt,context:question.context,focus:question.focus,options:question.options,
-      ...(revealed? {correct:question.correct,skill:question.skill,why:question.why,discuss:question.discuss,counts:[0,1,2,3].map(i=>answers.filter(a=>a.choice===i).length),myPoints:mine?.points ?? 0} : {})
+      prompt:question.prompt,context:question.context,focus:question.focus,
+      options:order.map(i=>question.options[i]),
+      ...(revealed? {correct:shuffledCorrectIndex(order,question.correct),skill:question.skill,why:question.why,discuss:question.discuss,counts:[0,1,2,3].map(i=>answers.filter(a=>a.choice===i).length),myPoints:mine?.points ?? 0} : {})
     } : null
   };
 }
@@ -145,7 +149,8 @@ async function submit(body) {
   validation(room.status==='playing' && !!question, 'The question is not open');
   const {error} = await database().rpc('vault_submit', {
     p_room:room.id,p_player:auth.player.id,p_question:room.question_index,
-    p_choice:body.choice,p_correct_choice:question.correct
+    p_choice:body.choice,
+    p_correct_choice:shuffledCorrectIndex(optionOrder(room.id,question.id),question.correct)
   });
   check(error);
   return {ok:true};
