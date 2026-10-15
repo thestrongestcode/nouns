@@ -148,3 +148,19 @@ What changed:
 - Database: `vault_rooms.input` column, a new `vault_board_answer` function (one answer per player per card, upserted), and `vault_submit` refuses board rooms.
 
 Still open for the board design: a speed bonus would not make sense without student devices, so E4 is now marked as phone-only if it is ever added.
+
+## Round 3: one-device board, new card types
+
+Teacher direction: one device shared on the board, teams that take turns, full-word answers, an instructions page, and no join codes.
+
+What changed:
+
+- Removed the phone play, join codes, Supabase, and Vercel API. The game runs entirely in the browser.
+- Teams take turns card by card. Within each block of four cards, each team gets one word card and one label card.
+- Answers are full text, not A to D letters.
+- Two kinds of card alternate: label cards ("This highlighted word is...") and word cards ("Which word in this sentence is a...?").
+- The teacher taps the team's answer. Points go to the team that is up. There is no timer.
+- Added a "How to play" page, and the home screen links to it.
+- Fixed the logo link, which pointed to the site root and returned a 404 on GitHub Pages.
+
+Still open: a steal rule (the other team answers when the first team is wrong), a speed bonus, glossary, and browser tests in CI.

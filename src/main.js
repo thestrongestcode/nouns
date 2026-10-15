@@ -1,348 +1,388 @@
 import './styles.css';
-import { createClient } from '@supabase/supabase-js';
-import { rankPlayers, teamSummary, ordinal, joinNames } from './scoring.js';
+import { CHAMBERS } from './questions.js';
+import {
+  buildGame, answer, nextCard, winner, debrief, countText, QUESTION_COUNTS, POINTS_PER_CORRECT,
+} from './game.js';
 
+// One device, shared on the board. The whole game lives in this page, so it can be saved
+// in sessionStorage to survive a page refresh. Storage can fail (private windows, blocked
+// storage), so every read and write is wrapped and the game still works without it.
+const KEY = 'word-vault-board-v1';
 const app = document.querySelector('#app');
-const statusText = document.querySelector('#status-label');
-const KEY = 'word-vault-multiplayer-session-v1';
-const STORE = __DEMO__ ? sessionStorage : localStorage;
-let hintOpen = false;
-let hintKey = '';
-const STAGES = ['Noun Forge','Pronoun Portal','Repair Lab','Master Lock'];
-const marks = ['A','B','C','D'];
-let DEFAULT_ROOM = new URLSearchParams(location.search).get('room')?.toUpperCase() || '';
-
-let session = null;
-try { session = JSON.parse(STORE.getItem(KEY) || 'null'); } catch {}
-let snapshot = null;
-let client = null;
-let channel = null;
-let poller = null;
-let ticker = null;
-let errorNotice = '';
-let sending = false;
-let lastFetch = 0;
-let clockSkew = 0; // server time minus this device's time, so a wrong device clock cannot break the timer
-let lastSignature = '';
-let lastTimeUpKey = '';
 const announcer = document.querySelector('#announcer');
 
-const escape = val => String(val ?? '').replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
-const highlighted = (text, target) => {
-  if (!target) return escape(text);
-  const at = text.toLowerCase().indexOf(target.toLowerCase());
-  if (at < 0) return escape(text);
-  return escape(text.slice(0,at)) + '<mark>' + escape(text.slice(at,at+target.length)) + '</mark>' + escape(text.slice(at+target.length));
-};
+const DEFAULT_SETUP = { teamA: 'Team 1', membersA: '', teamB: 'Team 2', membersB: '', count: 16 };
+let view = { screen: 'home', setup: { ...DEFAULT_SETUP }, game: null, hint: false, error: '' };
 
-async function api(action, data={}) {
-  if (__DEMO__) {
-    const { demoRequest } = await import('./demo-api.js');
-    const { status, json } = await demoRequest({ action, ...data });
-    if (status >= 400) throw Object.assign(new Error(json.error || 'Server error'), { status });
-    return json;
-  }
-  const resp = await fetch('/api/game', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action,...data})});
-  const json = await resp.json().catch(()=>null);
-  if (!json) {
-    const missing = resp.status === 404 || resp.status === 405;
-    throw Object.assign(new Error(missing
-      ? 'The game server was not found. This site needs the Vercel deployment with the /api folder; GitHub Pages cannot run it (see the README).'
-      : 'The server returned an invalid response.'), {status: resp.status});
-  }
-  if (!resp.ok) throw Object.assign(new Error(json.error || 'Server error'), {status: resp.status});
-  return json;
+function save() {
+  try { sessionStorage.setItem(KEY, JSON.stringify(view)); } catch { /* storage is optional */ }
 }
 
-function showError(err) {
-  errorNotice = err?.message || String(err);
-  const box = document.getElementById('error');
-  if (box) { box.hidden=false;box.textContent=errorNotice; }
-  else render();
+function restore() {
+  try {
+    const saved = JSON.parse(sessionStorage.getItem(KEY) || 'null');
+    if (!saved || typeof saved !== 'object') return;
+    view = { ...view, ...saved, setup: { ...DEFAULT_SETUP, ...(saved.setup || {}) } };
+    if ((view.screen === 'board' || view.screen === 'finish') && !view.game) view.screen = 'home';
+  } catch { /* start fresh */ }
 }
-function clearError() { errorNotice=''; }
-function errorBox(){ return `<div id="error" role="alert" class="notice error" ${errorNotice?'':'hidden'}>${escape(errorNotice)}</div>`; }
-function getSeconds(s) {
-  if (!s.startedAt || s.input==='board') return s.seconds;
-  return Math.max(0,Math.ceil(s.seconds - (Date.now() + clockSkew - Date.parse(s.startedAt)) / 1000));
+
+const esc = value => String(value ?? '').replace(/[&<>"']/g, ch => (
+  { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]
+));
+
+const capitalize = text => text.charAt(0).toUpperCase() + text.slice(1);
+
+function readAloud(text) {
+  try {
+    speechSynthesis.cancel();
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.rate = 0.95;
+    speechSynthesis.speak(utterance);
+  } catch { /* speech is optional */ }
 }
-function setStatus(text){statusText.textContent=text;}
-function saveSession(v) {session=v;STORE.setItem(KEY,JSON.stringify(v));}
-function clearSession() {
-  if (channel && client) client.removeChannel(channel);
-  channel = null;
-  clearInterval(poller);
-  clearInterval(ticker);
-  STORE.removeItem(KEY);
-  session=null;snapshot=null;sending=false;clearError();
-  DEFAULT_ROOM='';lastSignature='';lastTimeUpKey='';clockSkew=0;
-  history.replaceState(null,'',location.pathname);
-  setStatus('Ready to play');render();
-}
-function badge(text,cls=''){return `<span class="chip ${cls}">${escape(text)}</span>`;}
-function stageCards(s) {
-  const current = s.question ? s.question.sector : STAGES.length;
-  return `<div class="stages">${STAGES.map((name,i)=>{
-    const state = i<current ? 'completed' : i===current ? 'active' : '';
-    const label = i<current ? '✓ Complete' : i===current ? '● In progress' : 'Locked';
-    return `<div class="stage ${state}"><small>CHAMBER ${String(i+1).padStart(2,'0')}</small><strong>${escape(name)}</strong><span>${label}</span></div>`;
-  }).join('')}</div>`;
-}
-function scoreboard(s) {
-  const rows=rankPlayers(s.players);
-  const noScoresYet=rows.every(p=>p.score===0); // everyone is tied at 0, so ranks would all read "1"
-  let teams='';
-  if(s.mode==='teams') {
-    const t=teamSummary(s.players);
-    const card=key=>`<div class="team ${key.toLowerCase()} ${t.leader===key?'leading':''}"><small>TEAM ${key}</small><b>${t[key].average.toFixed(1)}</b><span>avg per player</span><span>${t[key].count} ${t[key].count===1?'player':'players'} · ${t[key].total} pts</span></div>`;
-    teams=`<div class="team-scores">${card('A')}${card('B')}</div>`;
-  }
-  return `<aside class="score-panel"><div class="panelhead"><h3>Leaderboard</h3>${badge(rows.length+' joined')}</div>${teams}<ol class="scores">${rows.map(p=>`<li class="${p.id===s.selfId?'me':''}"><span class="rank">${noScoresYet?'–':p.rank}</span><span class="player-name">${escape(p.name)} ${s.mode==='teams'?`<em>${p.team}</em>`:''}</span><b>${p.score}</b></li>`).join('') || '<li class="empty">Waiting for players…</li>'}</ol><p class="muted tiny">${s.input==='board'?'10 pts per correct answer. Scores update after each reveal.':'10 pts correct · +5 speed bonus if correct within 10 seconds. Scores update after each reveal.'}${s.mode==='teams'?' Teams are compared by average points per player.':''}</p></aside>`;
-}
-function intro() {
-  return `<section class="intro card">
-    <div class="intro-copy"><div class="eyebrow">A LIVE CLASSROOM GRAMMAR CHALLENGE</div><h1>Crack the<br><span>Word Vault.</span></h1><p>64 noun and pronoun puzzles, with a different mix in every game. One shared room. Every student on their own device. Your grammar knowledge is the key.</p><div class="facts"><span>✳ 16 grammar types</span><span>⌁ 4 chambers</span><span>◉ Live leaderboard</span></div></div>
-    <div class="vault-visual" aria-hidden="true"><div class="orbital one"></div><div class="orbital two"></div><div class="core">✳</div><div class="spark top"></div><div class="spark bottom"></div></div>
-  </section>
-  <section class="entry-grid">
-    <form class="card entry" id="join-form"><div class="entry-icon">↗</div><h2>Join a game</h2><p>Enter the six-character code shown on your teacher's screen.</p><label for="join-room">ROOM CODE</label><input id="join-room" name="code" placeholder="ABC123" maxlength="6" autocomplete="off" spellcheck="false" value="${escape(DEFAULT_ROOM)}" required /><label for="join-name">YOUR NAME</label><input id="join-name" name="name" maxlength="24" placeholder="Choose a nickname" autocomplete="nickname" required/><button class="button primary full" type="submit">Enter the vault →</button></form>
-    <form class="card entry" id="host-form"><div class="entry-icon host-icon">✳</div><h2>Host a classroom</h2><p>Control the rounds and project the live scores for everyone.</p><label for="host-name">HOST NAME</label><input id="host-name" name="name" maxlength="24" value="Teacher" required/><div class="selectors"><div><label for="length">QUESTIONS</label><select id="length" name="length"><option value="16">Quick · 16</option><option value="32" selected>Full · 32</option></select></div><div id="seconds-field"><label for="seconds">TIME LIMIT</label><select id="seconds" name="seconds"><option value="20">20 seconds</option><option value="30" selected>30 seconds</option><option value="45">45 seconds</option><option value="60">60 seconds</option></select></div></div><label for="input">WHERE STUDENTS ANSWER</label><select id="input" name="input"><option value="phones" selected>Their own devices (join with a code)</option><option value="board">One device, shared on the board</option></select><label for="mode">SCORING MODE</label><select id="mode" name="mode"><option value="individual">Individual players</option><option value="teams">Two auto-balanced teams</option></select><div id="roster-field" hidden><label for="roster">STUDENT NAMES (ONE PER LINE)</label><textarea id="roster" name="roster" rows="5" maxlength="1200" placeholder="Ana&#10;Ben&#10;Cleo"></textarea></div><button class="button dark full" type="submit">Create game →</button></form>
-  </section>
-  <div class="intro-foot">No student accounts needed. The teacher hosts a room, shares the code, and starts the game when everyone is ready.</div>`;
-}
-function headerRoom(s) {
-  return `<div class="roomheading"><div><div class="eyebrow">WORD VAULT / LIVE ROOM</div><h1>${s.status==='lobby'?'The lobby':s.status==='finished'?'The vault is open!':s.status==='reveal'?'The answer revealed':'Unlock the next clue'}</h1><p>${s.role==='host'?'Teacher dashboard':'Student game screen'} · Hosted by ${escape(s.hostName)}</p></div><div class="roomcode"><small>JOIN CODE</small><strong>${escape(s.code)}</strong><button class="textlink" data-action="copy-link" type="button">Copy invite link ↗</button></div></div>`;
-}
-function lobby(s) {
-  const host=s.role==='host';
-  return `${headerRoom(s)}<div class="content-grid"><section class="card play-card">
-    <div class="mini-heading">${badge('PREPARING MISSION','orange')} ${badge(s.mode==='teams'?'Two teams':'Individual scores')}</div><h2>${host?'Invite your players':'You are in!'}</h2><p class="lead">${s.input==='board'?'Students are listed below. Start the challenge when you are ready. Students do not need devices.':host?'Share the room code or invite link, then start once students have joined.':'Your teacher will begin the challenge. Keep this tab open.'}</p>
-    <div class="bigcode">${escape(s.code)}</div><p class="hint">${s.input==='board'?'Everything runs on this screen. Tap each student\'s answer as the class answers.':host?'Students can join at this website using this code.':'You are connected and ready for the first question.'}</p>
-    <div class="configuration"><div><small>QUESTION CARDS</small><strong>${s.questionCount}</strong></div><div><small>ROUND TIMER</small><strong>${s.seconds}s</strong></div><div><small>PLAYERS</small><strong>${s.players.length}/60</strong></div></div>
-    ${host?`<div class="controls"><button class="button primary" data-command="start" ${s.players.length===0?'disabled':''}>Start challenge →</button><button class="button outline" data-action="copy-link">Copy invite</button></div><p class="tiny muted">You can start as soon as at least one student has joined.</p>`:`<div class="waiting"><span class="pulse"></span> Waiting for the teacher to start…</div>`}
-  </section>${scoreboard(s)}</div>`;
-}
-function options(s) {
-  const q=s.question;
-  if (!q) return '';
-  const shown=s.status==='reveal';
-  return `<div class="choices">${q.options.map((answer,i)=>{
-    let cls='';
-    if (shown && i===q.correct) cls='correct';
-    else if (shown && s.myChoice===i) cls='incorrect';
-    else if (s.myChoice===i) cls='selected';
-    let count = shown?`<span class="choice-count">${q.counts[i]} vote${q.counts[i]===1?'':'s'}</span>`:'';
-    return `<button class="choice ${cls}" data-choice="${i}" ${s.role==='host'||s.answered||shown||getSeconds(s)===0||sending?'disabled':''}><span class="choice-letter">${marks[i]}</span><span class="answer-text">${escape(answer)}</span>${count}</button>`;
-  }).join('')}</div>`;
-}
-function questionView(s) {
-  const q=s.question,host=s.role==='host',revealed=s.status==='reveal';
-  const cardKey=`${s.code}:${s.index}`;
-  if(hintKey!==cardKey){hintKey=cardKey;hintOpen=false;}
-  const aidsHtml=`<div class="aids"><button class="textlink" data-action="read" type="button">Read aloud</button>${q.hint?`<button class="textlink" data-action="hint" type="button" aria-expanded="${hintOpen}">${hintOpen?'Hide hint':'Need a hint?'}</button>`:''}</div>${hintOpen&&q.hint?`<div class="hint-box"><b>Hint:</b> ${escape(q.hint)}</div>`:''}`;
-  const seconds=getSeconds(s);
-  const stageLabel=q.chamber;
-  const round=(s.index+1);
-  const progress=(round/s.questionCount)*100;
-  return `${headerRoom(s)}${stageCards(s)}<div class="content-grid"><section class="card play-card">
-    <div class="question-head"><div>${badge(stageLabel)} ${badge(`CARD ${round} OF ${s.questionCount}`,'neutral')}</div><div class="timer ${seconds<=10&&!revealed?'urgent':''}" id="clock">${s.input==='board'?'On the board':revealed?'✓ Revealed':`◷ ${seconds}s`}</div></div>
-    <div class="progress"><div style="width:${progress}%"></div></div>
-    <h2 class="prompt">${escape(q.prompt)}</h2>
-    ${q.context?`<blockquote class="context">${highlighted(q.context,q.focus)}</blockquote>`:''}
-    ${aidsHtml}
-    ${s.input==='board'&&host?boardEntry(s):options(s)}
-    ${revealed?`<div class="explanation"><div class="eyebrow">ANSWER EXPLAINED · ${escape(q.skill)}</div><strong>${marks[q.correct]}. ${escape(q.options[q.correct])}</strong><p>${escape(q.why)}</p><div class="discuss">DISCUSSION PROMPT: ${escape(q.discuss)}</div>${!host?`<p class="personal-result">${s.answered?`Your answer: ${s.myChoice===q.correct?'correct':'incorrect'} · +${q.myPoints} points`:'You did not answer this round.'}</p>`:''}</div>`:
-      `<div class="response-state">${host?`<strong>${s.answersReceived} / ${s.players.length}</strong> answers submitted · Reveal when you're ready.`:s.answered?'✓ Answer locked! Waiting for the teacher to reveal.':seconds===0?'Time is up. Waiting for the teacher.':'Choose one answer before time runs out.'}</div>`}
-    ${host?`<div class="controls"><button class="button primary" data-command="${revealed?'next':'reveal'}">${revealed?(round===s.questionCount?'Finish game →':'Next card →'):'Reveal answer →'}</button><button class="button outline" data-action="finish-confirm">End game</button></div>`:''}
-  </section>${scoreboard(s)}</div>`;
-}
-function finished(s) {
-  const ranked=rankPlayers(s.players);
-  const best=ranked.filter(p=>p.rank===1);
-  const me=ranked.find(p=>p.id===s.selfId);
-  const teams=s.mode==='teams'?teamSummary(s.players):null;
-  const host=s.role==='host';
-  const myCard=me&&s.myResult?`<div class="my-result"><small>YOUR RESULT</small><strong>${me.tied?'Tied for ':''}${ordinal(me.rank)} of ${ranked.length}</strong><span>${me.score} points · ${s.myResult.correct} of ${s.playedCount} correct</span></div>`:'';
-  const winnerCard=best.length?`<div class="winner"><small>${best.length>1?'TIED FOR FIRST':'TOP SCORE'}</small><strong>${escape(joinNames(best.map(p=>p.name)))}</strong><span>${best[0].score} points</span></div>`:'';
-  const teamCard=teams&&(teams.leader||teams.tied)?`<div class="team-result ${teams.leader?teams.leader.toLowerCase():''}"><small>TEAM RESULT</small><strong>${teams.leader?`Team ${teams.leader} wins`:'The teams tied'}</strong><span>Average points per player: Team A ${teams.A.average.toFixed(1)}, Team B ${teams.B.average.toFixed(1)}</span></div>`:'';
-  const weakest=s.report?.[0]?.skill;
-  const debrief=host?`<div class="note"><b>Teacher debrief:</b> ${weakest?`Most of the class missed items on <b>${escape(weakest)}</b>. Start the discussion there, then ask a student to defend an answer they found hard.`:'Ask a student to defend an answer they found hard.'}</div>`:'';
-  return `${headerRoom(s)}<div class="content-grid"><section class="card play-card result-card"><div class="victory">✳</div><div class="eyebrow">MISSION COMPLETE</div><h2>The vault is unlocked.</h2><p class="lead">Great work examining how nouns and pronouns function in real sentences.</p>${myCard}${winnerCard}${teamCard}${debrief}${s.report?.length?`<div class="mastery"><h3>Concepts to review</h3>${s.report.slice(0,5).map(x=>`<div><span>${escape(x.skill)}</span><b>${x.correct}/${x.total} correct</b></div>`).join('')}</div>`:`<p class="hint">No missed concepts were recorded. Excellent work!</p>`}<button class="button primary" data-action="leave">Return to home</button></section>${scoreboard(s)}</div>`;
-}
-function focusSelector() {
-  const el=document.activeElement;
-  if(!el || el===app || !app.contains(el)) return '';
-  const d=el.dataset||{};
-  if(d.choice!==undefined) return `[data-choice="${d.choice}"]`;
-  if(d.command) return `[data-command="${d.command}"]`;
-  if(d.action) return `[data-action="${d.action}"]`;
-  return el.id ? '#'+el.id : '';
-}
-function boardEntry(s) {
-  const q=s.question, revealed=s.status==='reveal';
-  const entries=new Map((s.entries||[]).map(e=>[e.playerId,e]));
-  const rows=s.players.slice().sort((a,b)=>a.name.localeCompare(b.name)).map(p=>{
-    const e=entries.get(p.id), chosen=e?e.choice:null;
-    let verdict='';
-    if(revealed) verdict=chosen===null?'<span class="verdict none">No answer</span>':e.correct?'<span class="verdict yes">✓ Correct</span>':'<span class="verdict no">✗ Wrong</span>';
-    return `<div class="entry-row"><span class="entry-name">${escape(p.name)}</span><div class="entry-choices">${q.options.map((o,i)=>`<button class="entry-choice ${chosen===i?'picked':''} ${revealed&&i===q.correct?'correct':''}" data-entry="${p.id}" data-choice="${i}" ${revealed?'disabled':''} aria-pressed="${chosen===i}" aria-label="${escape(p.name)}: ${marks[i]}, ${escape(o)}">${marks[i]}</button>`).join('')}</div>${verdict}</div>`;
-  }).join('') || '<p class="muted">No students yet.</p>';
-  const counts=revealed?`<div class="entered">${q.counts.map((n,i)=>`${marks[i]}: ${n}`).join(' · ')}</div>`:`<div class="entered">${(s.entries||[]).length} of ${s.players.length} entered</div>`;
-  return `<div class="board-entry">${revealed?'':'<p class="muted tiny">Tap each student\'s answer. Tap it again to clear it.</p>'}${rows}${counts}</div>`;
-}
-function readAloud() {
-  const q=snapshot?.question;
-  if(!q || !('speechSynthesis' in window)) {showError(new Error('Read aloud is not available in this browser.'));return;}
-  const text=[q.prompt,q.context,...q.options.map((o,i)=>`${marks[i]}. ${o}`)].filter(Boolean).join('. ');
-  speechSynthesis.cancel();
-  speechSynthesis.speak(new SpeechSynthesisUtterance(text));
-}
-function demoNote() {
-  return '<div class="notice demo-note" role="note">Practice build on GitHub Pages. Each tab is one device, and tabs in this browser share a room. For a real classroom with students on their own devices, use the Vercel version.</div>';
-}
-function render() {
-  const s=snapshot;
-  const keep=focusSelector();
-  app.innerHTML=(__DEMO__?demoNote():'')+(s ? `<div class="room-wrap ${s.status} ${s.role}">${s.status==='lobby'?lobby(s):s.status==='finished'?finished(s):questionView(s)}<div class="bottomrow"><button class="smalllink" data-action="leave">Leave this room</button><span>Make your words count.</span></div></div>` : intro()) + errorBox();
-  if(keep) app.querySelector(keep)?.focus({preventScroll:true});
-}
+
 function announce(text) {
-  if(!announcer) return;
-  announcer.textContent='';
-  setTimeout(()=>{announcer.textContent=text;},50);
+  if (announcer) announcer.textContent = text;
 }
-function announceChange(prev,next) {
-  if(next.status==='playing' && (!prev || prev.status!=='playing' || prev.index!==next.index)) announce(`Card ${next.index+1} of ${next.questionCount}. ${getSeconds(next)} seconds.`);
-  else if(next.status==='reveal' && prev?.status!=='reveal') announce(next.role==='player' ? (next.answered ? (next.myChoice===next.question.correct ? 'Answer revealed. You were correct.' : 'Answer revealed. You were not correct.') : 'Answer revealed. You did not answer.') : 'Answer revealed.');
-  else if(next.status==='finished' && prev?.status!=='finished') announce('The game is over.');
+
+// ---- Screens -------------------------------------------------------------
+
+function renderHome() {
+  return `
+    <section class="card home">
+      <p class="eyebrow">Word Vault / Teacher board</p>
+      <h1 tabindex="-1" data-focus>Unlock the next clue</h1>
+      <p class="lead">A nouns and pronouns game for one screen. Two teams take turns. Each card shows a sentence, and the teams decide the answer together.</p>
+      <div class="actions">
+        <button class="button primary" data-action="setup">Set up a game</button>
+        <button class="button outline" data-action="how">How to play</button>
+      </div>
+    </section>`;
 }
-function updateClock() {
-  if(!snapshot || snapshot.status!=='playing' || snapshot.input==='board') return;
-  const el=document.getElementById('clock');
-  if(!el) return;
-  const seconds=getSeconds(snapshot);
-  el.textContent=`◷ ${seconds}s`;
-  el.classList.toggle('urgent',seconds<=10);
-  if(seconds===0) {
-    const key=snapshot.code+':'+snapshot.index;
-    if(lastTimeUpKey!==key){lastTimeUpKey=key;announce('Time is up.');}
-    document.querySelectorAll('[data-choice]').forEach(b=>b.disabled=true);
-    const note=document.querySelector('.response-state');
-    if(note && snapshot.role==='player' && !snapshot.answered) note.textContent='Time is up. Waiting for the teacher.';
+
+function renderHow() {
+  return `
+    <section class="card how">
+      <p class="eyebrow">Instructions</p>
+      <h1 tabindex="-1" data-focus>How to play</h1>
+      <ol class="steps">
+        <li>
+          <h2>Set up the teams</h2>
+          <p>Name each team and list its members. Choose 16 cards for a quick game or 32 for a full game.</p>
+        </li>
+        <li>
+          <h2>Take turns</h2>
+          <p>The teams take turns. Team 1 gets the first card, Team 2 the second, and so on. Each team gets both kinds of card equally.</p>
+        </li>
+        <li>
+          <h2>Read the board</h2>
+          <p>There are two kinds of card. A <strong>label card</strong> highlights one word, and the question is "This highlighted word is...". Pick the full label, such as "a common noun." A <strong>word card</strong> has no highlight, and the question is "Which word in this sentence is a...?" Pick the word.</p>
+        </li>
+        <li>
+          <h2>Answer together</h2>
+          <p>The team talks it over. When it has decided, tap its answer on the board. Tap "No answer" if the team cannot decide.</p>
+        </li>
+        <li>
+          <h2>Score</h2>
+          <p>A correct answer is worth ${POINTS_PER_CORRECT} points. A wrong answer or no answer scores 0.</p>
+        </li>
+        <li>
+          <h2>Discuss</h2>
+          <p>After each answer, the board shows why the answer is right and a question for the class. Read it aloud and invite a student to explain.</p>
+        </li>
+        <li>
+          <h2>Finish</h2>
+          <p>The team with the most points wins. The last screen shows the concept most cards were missed on, so you know what to review.</p>
+        </li>
+      </ol>
+      <div class="tips">
+        <strong>Teacher tips:</strong> Keep the board visible the whole time. Use "Show hint" if a team is stuck. Use "Read aloud" to read the sentence and the choices to the room.
+      </div>
+      <div class="actions">
+        <button class="button primary" data-action="setup">Set up a game</button>
+        <button class="button outline" data-action="home">Back</button>
+      </div>
+    </section>`;
+}
+
+function renderSetup() {
+  const s = view.setup;
+  const options = QUESTION_COUNTS.map(n => `
+    <label class="radio"><input type="radio" name="count" value="${n}" ${Number(s.count) === n ? 'checked' : ''}/>
+    <span>${n === 16 ? 'Quick game: 16 cards' : 'Full game: 32 cards'}</span></label>`).join('');
+  return `
+    <section class="card setup">
+      <p class="eyebrow">Set up</p>
+      <h1 tabindex="-1" data-focus>Set up the teams</h1>
+      <form id="setup-form" novalidate>
+        <div class="teams-grid">
+          <fieldset class="team-fields">
+            <legend>Team 1</legend>
+            <label for="teamA">Team name</label>
+            <input id="teamA" name="teamA" maxlength="24" value="${esc(s.teamA)}" required />
+            <label for="membersA">Members, one per line</label>
+            <textarea id="membersA" name="membersA" rows="6" maxlength="800">${esc(s.membersA)}</textarea>
+          </fieldset>
+          <fieldset class="team-fields">
+            <legend>Team 2</legend>
+            <label for="teamB">Team name</label>
+            <input id="teamB" name="teamB" maxlength="24" value="${esc(s.teamB)}" required />
+            <label for="membersB">Members, one per line</label>
+            <textarea id="membersB" name="membersB" rows="6" maxlength="800">${esc(s.membersB)}</textarea>
+          </fieldset>
+        </div>
+        <fieldset class="counts">
+          <legend>Length</legend>
+          ${options}
+        </fieldset>
+        ${view.error ? `<p class="error" role="alert">${esc(view.error)}</p>` : ''}
+        <div class="actions">
+          <button class="button primary" type="submit">Start the game</button>
+          <button class="button outline" type="button" data-action="how">How to play</button>
+          <button class="button text" type="button" data-action="home">Back</button>
+        </div>
+      </form>
+    </section>`;
+}
+
+function teamCard(team, isUp) {
+  const members = team.members.length ? team.members.map(esc).join(', ') : 'No members listed';
+  return `
+    <div class="team-card ${isUp ? 'is-up' : ''}">
+      <div class="team-top">
+        <span class="team-name">${esc(team.name)}</span>
+        ${isUp ? '<span class="up-tag">Up now</span>' : ''}
+      </div>
+      <div class="team-score">${team.score}<small>points</small></div>
+      <div class="team-members">${members}</div>
+    </div>`;
+}
+
+function renderBoard() {
+  const g = view.game;
+  const card = g.cards[g.index];
+  const revealed = g.phase === 'reveal';
+  const upIndex = card.team;
+  const picked = g.picked;
+
+  // The sentence. Label cards highlight the target word; word cards show the sentence plain.
+  let sentence = esc(card.context);
+  if (card.type === 'label') {
+    sentence = sentence.replace(esc(card.focus), `<mark class="focus">${esc(card.focus)}</mark>`);
   }
-}
-async function refresh() {
-  if(!session) return;
-  const issued=++lastFetch;
-  try {
-    const asked=Date.now();
-    const data=await api('state', {code:session.code,token:session.token});
-    if(issued!==lastFetch || !session) return;
-    if(data.serverTime) clockSkew=data.serverTime-(asked+Date.now())/2;
-    // Only rebuild the page when something changed. Rebuilding every poll threw away keyboard focus.
-    const {serverTime,...stable}=data;
-    const signature=JSON.stringify(stable);
-    const hadError=!!errorNotice;
-    const previous=snapshot;
-    snapshot=data;clearError();
-    if(signature!==lastSignature || hadError) {lastSignature=signature;render();announceChange(previous,data);}
-    updateClock();
-    setStatus('Room '+data.code+' · connected');
-    if(!channel) connectRealtime(data.roomId);
-  } catch(err) {
-    if(issued!==lastFetch) return;
-    if(err.status===403 || err.status===404) {
-      clearSession();
-      showError(new Error('That room is no longer available. Ask your teacher for a new code.'));
-      return;
+
+  const choices = card.options.map((text, i) => {
+    let state = '';
+    if (revealed) {
+      if (i === card.correct) state = 'is-correct';
+      else if (i === picked) state = 'is-wrong';
     }
-    showError(err);
-    setStatus('Connection issue · retrying');
+    return `<button class="choice ${state}" data-action="pick" data-index="${i}" ${revealed ? 'disabled' : ''}>${esc(text)}</button>`;
+  }).join('');
+
+  let result = '';
+  if (revealed) {
+    const team = g.teams[upIndex];
+    if (picked === null) {
+      result = `<p class="verdict neutral">No answer. ${esc(team.name)} scores 0. The answer is <strong>${esc(card.options[card.correct])}</strong>.</p>`;
+    } else if (picked === card.correct) {
+      result = `<p class="verdict good">Correct. ${esc(team.name)} scores ${POINTS_PER_CORRECT} points.</p>`;
+    } else {
+      result = `<p class="verdict bad">Not quite. The answer is <strong>${esc(card.options[card.correct])}</strong>.</p>`;
+    }
   }
-}
-async function connectRealtime(roomId) {
-  if(channel || !session) return;
-  try {
-    const config=await api('config');
-    if (!session || !config.url || !config.publishableKey) return; // polling still works
-    client=createClient(config.url,config.publishableKey,{auth:{persistSession:false,autoRefreshToken:false}});
-    channel=client.channel('vault-room-'+roomId)
-      .on('postgres_changes',{event:'INSERT',schema:'public',table:'vault_events',filter:'room_id=eq.'+roomId},()=>refresh())
-      .subscribe();
-  } catch(err) {console.warn('Realtime unavailable; periodic refresh still works.',err);}
-}
-function startWatching() {
-  clearInterval(poller);clearInterval(ticker);
-  ticker=setInterval(updateClock,250);
-  poller=setInterval(refresh,6000); // fallback if a Realtime connection is interrupted
-  refresh();
-}
-async function busyCall(operation) {
-  if(sending) return;
-  sending=true;clearError();
-  try {await operation();await refresh();}
-  catch(err){showError(err);}
-  finally {sending=false;}
+
+  const explain = revealed ? `
+    <div class="explain">
+      <p class="explain-label">Why</p>
+      <p>${esc(card.why)}</p>
+      <p class="explain-label">Ask the class</p>
+      <p>${esc(card.discuss)}</p>
+    </div>` : '';
+
+  const hint = !revealed && view.hint ? `<div class="hint"><strong>Hint:</strong> ${esc(card.hint)}</div>` : '';
+
+  const controls = revealed
+    ? `<button class="button primary" data-action="next">${g.index + 1 === g.cards.length ? 'See results' : 'Next card'} &rarr;</button>`
+    : `<button class="button outline" data-action="pass">No answer (0 points)</button>
+       <button class="button outline" data-action="hint">${view.hint ? 'Hide hint' : 'Show hint'}</button>`;
+
+  const track = CHAMBERS.map((name, i) => `
+    <span class="chamber ${i === card.sector ? 'is-current' : ''}">${i + 1}. ${esc(name)}</span>`).join('');
+
+  const progress = Math.round(((g.index + (revealed ? 1 : 0)) / g.cards.length) * 100);
+
+  return `
+    <section class="board" aria-label="Game board">
+      <div class="scoreboard">
+        ${teamCard(g.teams[0], upIndex === 0)}
+        <div class="vs">vs</div>
+        ${teamCard(g.teams[1], upIndex === 1)}
+      </div>
+
+      <div class="card play">
+        <div class="play-top">
+          <div class="chips">
+            <span class="chip">${esc(CHAMBERS[card.sector])}</span>
+            <span class="chip muted">${esc(countText(g))}</span>
+          </div>
+          <div class="turn"><span>${esc(g.teams[upIndex].name)}</span> is up</div>
+        </div>
+        <div class="progress" aria-hidden="true"><span style="width:${progress}%"></span></div>
+        <div class="chambers">${track}</div>
+
+        <h1 class="prompt" tabindex="-1" data-focus>${esc(card.prompt)}</h1>
+        <p class="sentence">${sentence}</p>
+        <div class="aids">
+          <button class="textlink" data-action="read">Read aloud</button>
+        </div>
+        ${hint}
+
+        <div class="choices">${choices}</div>
+        ${result}
+        ${explain}
+
+        <div class="controls">${controls}</div>
+        <p class="leave"><button class="textlink" data-action="leave">Leave this game</button></p>
+      </div>
+    </section>`;
 }
 
-app.addEventListener('submit', async event=>{
-  event.preventDefault();
-  const form=event.target;
-  if(!['join-form','host-form'].includes(form.id)) return;
-  const values=Object.fromEntries(new FormData(form));
-  if(form.id==='join-form') values.code=(values.code||'').trim().toUpperCase();
-  await busyCall(async()=>{
-    const data=await api(form.id==='join-form'?'join':'create',{
-      ...values,
-      ...(form.id==='host-form'?{length:Number(values.length),seconds:Number(values.seconds)}:{})
-    });
-    saveSession({code:data.code,token:data.token,role:data.role});
-    history.replaceState(null,'','?room='+encodeURIComponent(data.code));
-    startWatching();
+function renderFinish() {
+  const g = view.game;
+  const [a, b] = g.teams;
+  const win = winner(g);
+  const headline = win ? `${esc(win.name)} wins!` : "It's a tie!";
+  const missed = debrief(g);
+  const note = missed
+    ? `<p class="debrief"><strong>Teacher debrief:</strong> Most cards were missed on <strong>${esc(capitalize(missed.skill))}</strong> (${missed.missed} of ${missed.total} cards). Start the next lesson there.</p>`
+    : '<p class="debrief"><strong>Teacher debrief:</strong> Every card was answered correctly. Try a longer game next time.</p>';
+  return `
+    <section class="card finish">
+      <p class="eyebrow">Mission complete</p>
+      <h1 tabindex="-1" data-focus>${headline}</h1>
+      <div class="final-scores">
+        ${[a, b].map(t => `
+          <div class="final-team ${win && win.name === t.name ? 'is-win' : ''}">
+            <span class="team-name">${esc(t.name)}</span>
+            <strong>${t.score}</strong><small>points</small>
+          </div>`).join('')}
+      </div>
+      ${note}
+      <div class="actions">
+        <button class="button primary" data-action="setup">Play again</button>
+        <button class="button outline" data-action="home">Home</button>
+      </div>
+    </section>`;
+}
+
+// ---- Rendering and events --------------------------------------------------
+
+function render() {
+  const screens = { home: renderHome, how: renderHow, setup: renderSetup, board: renderBoard, finish: renderFinish };
+  app.innerHTML = (screens[view.screen] || renderHome)();
+  const focusTarget = app.querySelector('[data-focus]');
+  if (focusTarget && view.screen !== 'board') focusTarget.focus({ preventScroll: false });
+  save();
+}
+
+function parseMembers(text) {
+  return text.split('\n').map(line => line.trim()).filter(Boolean).slice(0, 30);
+}
+
+function startGame(form) {
+  const data = new FormData(form);
+  const setup = {
+    teamA: String(data.get('teamA') || '').trim(),
+    membersA: String(data.get('membersA') || ''),
+    teamB: String(data.get('teamB') || '').trim(),
+    membersB: String(data.get('membersB') || ''),
+    count: Number(data.get('count')) || 16,
+  };
+  view.setup = setup;
+  if (!setup.teamA || !setup.teamB) {
+    view.error = 'Give both teams a name.';
+    return render();
+  }
+  if (setup.teamA.toLowerCase() === setup.teamB.toLowerCase()) {
+    view.error = 'The two teams need different names.';
+    return render();
+  }
+  view.error = '';
+  const seed = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  view.game = buildGame({
+    count: setup.count,
+    seed,
+    teamNames: [setup.teamA, setup.teamB],
+    members: [parseMembers(setup.membersA), parseMembers(setup.membersB)],
   });
+  view.hint = false;
+  view.screen = 'board';
+  announce(`Game started. ${setup.teamA} is up first.`);
+  render();
+}
+
+app.addEventListener('submit', event => {
+  if (event.target.id !== 'setup-form') return;
+  event.preventDefault();
+  startGame(event.target);
 });
-app.addEventListener('click', async event=>{
-  const control=event.target.closest('[data-command],[data-action],[data-choice],[data-entry]');
-  if(!control)return;
-  if(control.dataset.entry!==undefined){
-    const current=snapshot?.entries?.find(e=>e.playerId===control.dataset.entry);
-    const choice=Number(control.dataset.choice);
-    const next=current&&current.choice===choice?null:choice;
-    try{ await api('enterAnswer',{code:session.code,token:session.token,playerId:control.dataset.entry,choice:next}); await refresh(); }
-    catch(err){ showError(err); }
+
+app.addEventListener('click', event => {
+  const el = event.target.closest('[data-action]');
+  if (!el) return;
+  const action = el.dataset.action;
+  const g = view.game;
+
+  if (action === 'home' || action === 'how' || action === 'setup') {
+    view.screen = action;
+    view.error = '';
+    return render();
+  }
+
+  if (action === 'pick' || action === 'pass') {
+    if (!g || g.phase !== 'board') return;
+    const choice = action === 'pass' ? null : Number(el.dataset.index);
+    const correct = answer(g, choice);
+    const card = g.cards[g.index];
+    const team = g.teams[card.team];
+    announce(choice === null
+      ? `No answer. ${team.name} scores 0.`
+      : correct ? `Correct. ${team.name} scores ${POINTS_PER_CORRECT} points.`
+        : `Not quite. The answer is ${card.options[card.correct]}.`);
+    return render();
+  }
+
+  if (action === 'hint') {
+    view.hint = !view.hint;
+    return render();
+  }
+
+  if (action === 'read') {
+    if (!g) return;
+    const card = g.cards[g.index];
+    readAloud(`${card.context} ${card.prompt} ${card.options.join(', ')}`);
     return;
   }
-  if(control.dataset.action==='read'){readAloud();return;}
-  if(control.dataset.action==='hint'){hintOpen=!hintOpen;render();return;}
-  if(control.dataset.action==='leave'){clearSession();return;}
-  if(control.dataset.action==='copy-link'){
-    const link=location.origin+location.pathname+'?room='+encodeURIComponent(snapshot.code);
-    try {await navigator.clipboard.writeText(link);control.textContent='✓ Copied link';}
-    catch {showError(new Error('Could not copy automatically. Share this URL: '+link));}
-    return;
+
+  if (action === 'next') {
+    if (!g || g.phase !== 'reveal') return;
+    nextCard(g);
+    view.hint = false;
+    view.screen = g.phase === 'finish' ? 'finish' : 'board';
+    if (view.screen === 'finish') announce(`${winner(g)?.name ?? 'Tie'} ${winner(g) ? 'wins' : 'is a tie'}.`);
+    return render();
   }
-  if(control.dataset.action==='finish-confirm'){
-    if(!confirm('End the game early and show final scores?')) return;
-    await busyCall(()=>api('control',{code:session.code,token:session.token,command:'finish'}));
-    return;
-  }
-  if(control.dataset.command) {
-    await busyCall(()=>api('control',{code:session.code,token:session.token,command:control.dataset.command}));
-    return;
-  }
-  if(control.dataset.choice!==undefined && !control.disabled && !sending) {
-    const answer=Number(control.dataset.choice);
-    await busyCall(()=>api('answer',{code:session.code,token:session.token,choice:answer}));
+
+  if (action === 'leave') {
+    if (!window.confirm('Leave this game? The scores will be lost.')) return;
+    view.game = null;
+    view.hint = false;
+    view.screen = 'home';
+    return render();
   }
 });
 
-app.addEventListener('change', e=>{
-  if(e.target.id!=='input') return;
-  const board=e.target.value==='board';
-  document.getElementById('roster-field').hidden=!board;
-  document.getElementById('seconds-field').hidden=board;
-});
-if(session?.code && session?.token) {
-  history.replaceState(null,'','?room='+encodeURIComponent(session.code));
-  startWatching();
-} else render();
+restore();
+render();
