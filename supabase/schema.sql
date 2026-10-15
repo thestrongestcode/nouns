@@ -59,6 +59,10 @@ grant select on public.vault_events to anon;
 create policy "Public non-sensitive room notifications" on public.vault_events
   for select to anon using (true);
 
+-- Where students answer: on their own devices ('phones') or on one shared device ('board').
+alter table public.vault_rooms add column if not exists input text not null default 'phones'
+  check (input in ('phones', 'board'));
+
 -- A single SQL transaction locks the room, preventing race-condition double-scoring
 -- and stale answers across rounds. Only the Vercel server should call these functions.
 create or replace function public.vault_submit(
@@ -75,6 +79,9 @@ begin
   select * into r from public.vault_rooms where id = p_room for update;
   if r.id is null or r.status <> 'playing' or r.question_index <> p_question then
     raise exception 'This question is no longer accepting answers';
+  end if;
+  if r.input <> 'phones' then
+    raise exception 'The teacher enters answers for this game';
   end if;
   if clock_timestamp() > r.question_started_at + make_interval(secs => r.seconds_per_question) then
     raise exception 'Time is up for this question';
@@ -138,9 +145,47 @@ begin
 end;
 $$;
 
+-- Board mode: the teacher records or clears one student's answer. No timer, so no speed bonus.
+create or replace function public.vault_board_answer(
+  p_room uuid,
+  p_player uuid,
+  p_question integer,
+  p_choice integer,
+  p_correct_choice integer
+) returns void language plpgsql security definer set search_path = public as $$
+declare
+  r public.vault_rooms%rowtype;
+  is_correct boolean;
+begin
+  select * into r from public.vault_rooms where id = p_room for update;
+  if r.id is null or r.input <> 'board' then
+    raise exception 'Students answer on their own devices in this game';
+  end if;
+  if r.status <> 'playing' or r.question_index <> p_question then
+    raise exception 'This question is no longer accepting answers';
+  end if;
+  if not exists (select 1 from public.vault_players where id = p_player and room_id = p_room) then
+    raise exception 'Player not in room';
+  end if;
+  if p_choice is null then
+    delete from public.vault_answers where player_id = p_player and question_index = p_question;
+  else
+    if p_choice not between 0 and 3 then raise exception 'Invalid answer choice'; end if;
+    is_correct := p_choice = p_correct_choice;
+    insert into public.vault_answers(room_id, player_id, question_index, choice, correct, points)
+      values (p_room, p_player, p_question, p_choice, is_correct, case when is_correct then 10 else 0 end)
+      on conflict (player_id, question_index) do update
+        set choice = excluded.choice, correct = excluded.correct, points = excluded.points, answered_at = now();
+  end if;
+  insert into public.vault_events(room_id) values (p_room);
+end;
+$$;
+
 -- Don't allow unauthenticated clients to directly invoke scoring/control routines.
 revoke all on function public.vault_submit(uuid,uuid,integer,integer,integer) from public, anon, authenticated;
 revoke all on function public.vault_control(uuid,text) from public, anon, authenticated;
+revoke all on function public.vault_board_answer(uuid,uuid,integer,integer,integer) from public, anon, authenticated;
+grant execute on function public.vault_board_answer(uuid,uuid,integer,integer,integer) to service_role;
 grant execute on function public.vault_submit(uuid,uuid,integer,integer,integer) to service_role;
 grant execute on function public.vault_control(uuid,text) to service_role;
 
