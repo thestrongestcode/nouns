@@ -1,11 +1,10 @@
-# Builds the static practice demo and publishes it to GitHub Pages.
-# The demo runs the game rules in the browser. It cannot run /api/game, so it is
-# single-browser only (tabs share a room). The real classroom game deploys to Vercel.
-name: Demo on GitHub Pages
+# Builds the Word Vault and publishes it to GitHub Pages.
+# The game runs entirely in the browser, so no server or database is needed.
+name: Deploy to GitHub Pages
 
 on:
   push:
-    branches: [main, improve-word-vault]
+    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -14,7 +13,7 @@ permissions:
   id-token: write
 
 concurrency:
-  group: pages-demo
+  group: pages
   cancel-in-progress: true
 
 jobs:
@@ -28,13 +27,13 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm test
-      - name: Build demo for the project path
-        run: npm run build:demo
+      - name: Build for the project path
+        run: npm run build
         env:
           VITE_BASE: /${{ github.event.repository.name }}/
       - uses: actions/upload-pages-artifact@v3
         with:
-          path: dist-demo
+          path: dist
 
   deploy:
     needs: build

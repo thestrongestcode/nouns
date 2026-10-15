@@ -4,19 +4,19 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="theme-color" content="#0d2535" />
-  <meta name="description" content="The Word Vault: live multiplayer grammar game for nouns and pronouns. Join your class with a room code." />
-  <title>The Word Vault — Multiplayer</title>
+  <meta name="description" content="The Word Vault: a one-device nouns and pronouns game for the classroom board." />
+  <title>The Word Vault</title>
 </head>
 <body>
   <div class="site">
     <header class="topbar">
-      <a class="brand" href="/" aria-label="Word Vault home"><span class="mark">✳</span><span>THE WORD VAULT <small>MULTIPLAYER</small></span></a>
-      <span class="online"><span class="dot"></span><span id="status-label">Ready to play</span></span>
+      <!-- "./" keeps the logo on the game when the site is served from a subpath such as /nouns/. -->
+      <a class="brand" href="./" aria-label="The Word Vault home"><span class="mark">✳</span><span>THE WORD VAULT <small>CLASSROOM BOARD</small></span></a>
     </header>
     <main id="app"></main>
     <div id="announcer" class="sr-only" role="status" aria-live="polite"></div>
     <noscript><p style="color:#fff;text-align:center">The Word Vault needs JavaScript. Please turn it on and reload.</p></noscript>
-    <footer>THE WORD VAULT <span>·</span> NOUNS + PRONOUNS <span>·</span> 64 PUZZLES</footer>
+    <footer>THE WORD VAULT <span>·</span> NOUNS + PRONOUNS <span>·</span> 64 CARDS</footer>
   </div>
   <script type="module" src="/src/main.js"></script>
 </body>
