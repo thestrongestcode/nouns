@@ -63,7 +63,7 @@ function showError(err) {
 function clearError() { errorNotice=''; }
 function errorBox(){ return `<div id="error" role="alert" class="notice error" ${errorNotice?'':'hidden'}>${escape(errorNotice)}</div>`; }
 function getSeconds(s) {
-  if (!s.startedAt) return s.seconds;
+  if (!s.startedAt || s.input==='board') return s.seconds;
   return Math.max(0,Math.ceil(s.seconds - (Date.now() + clockSkew - Date.parse(s.startedAt)) / 1000));
 }
 function setStatus(text){statusText.textContent=text;}
@@ -97,7 +97,7 @@ function scoreboard(s) {
     const card=key=>`<div class="team ${key.toLowerCase()} ${t.leader===key?'leading':''}"><small>TEAM ${key}</small><b>${t[key].average.toFixed(1)}</b><span>avg per player</span><span>${t[key].count} ${t[key].count===1?'player':'players'} · ${t[key].total} pts</span></div>`;
     teams=`<div class="team-scores">${card('A')}${card('B')}</div>`;
   }
-  return `<aside class="score-panel"><div class="panelhead"><h3>Leaderboard</h3>${badge(rows.length+' joined')}</div>${teams}<ol class="scores">${rows.map(p=>`<li class="${p.id===s.selfId?'me':''}"><span class="rank">${noScoresYet?'–':p.rank}</span><span class="player-name">${escape(p.name)} ${s.mode==='teams'?`<em>${p.team}</em>`:''}</span><b>${p.score}</b></li>`).join('') || '<li class="empty">Waiting for players…</li>'}</ol><p class="muted tiny">10 pts correct · +5 speed bonus if correct within 10 seconds. Scores update after each reveal.${s.mode==='teams'?' Teams are compared by average points per player.':''}</p></aside>`;
+  return `<aside class="score-panel"><div class="panelhead"><h3>Leaderboard</h3>${badge(rows.length+' joined')}</div>${teams}<ol class="scores">${rows.map(p=>`<li class="${p.id===s.selfId?'me':''}"><span class="rank">${noScoresYet?'–':p.rank}</span><span class="player-name">${escape(p.name)} ${s.mode==='teams'?`<em>${p.team}</em>`:''}</span><b>${p.score}</b></li>`).join('') || '<li class="empty">Waiting for players…</li>'}</ol><p class="muted tiny">${s.input==='board'?'10 pts per correct answer. Scores update after each reveal.':'10 pts correct · +5 speed bonus if correct within 10 seconds. Scores update after each reveal.'}${s.mode==='teams'?' Teams are compared by average points per player.':''}</p></aside>`;
 }
 function intro() {
   return `<section class="intro card">
@@ -106,7 +106,7 @@ function intro() {
   </section>
   <section class="entry-grid">
     <form class="card entry" id="join-form"><div class="entry-icon">↗</div><h2>Join a game</h2><p>Enter the six-character code shown on your teacher's screen.</p><label for="join-room">ROOM CODE</label><input id="join-room" name="code" placeholder="ABC123" maxlength="6" autocomplete="off" spellcheck="false" value="${escape(DEFAULT_ROOM)}" required /><label for="join-name">YOUR NAME</label><input id="join-name" name="name" maxlength="24" placeholder="Choose a nickname" autocomplete="nickname" required/><button class="button primary full" type="submit">Enter the vault →</button></form>
-    <form class="card entry" id="host-form"><div class="entry-icon host-icon">✳</div><h2>Host a classroom</h2><p>Control the rounds and project the live scores for everyone.</p><label for="host-name">HOST NAME</label><input id="host-name" name="name" maxlength="24" value="Teacher" required/><div class="selectors"><div><label for="length">QUESTIONS</label><select id="length" name="length"><option value="16">Quick · 16</option><option value="32" selected>Full · 32</option></select></div><div><label for="seconds">TIME LIMIT</label><select id="seconds" name="seconds"><option value="20">20 seconds</option><option value="30" selected>30 seconds</option><option value="45">45 seconds</option><option value="60">60 seconds</option></select></div></div><label for="mode">SCORING MODE</label><select id="mode" name="mode"><option value="individual">Individual players</option><option value="teams">Two auto-balanced teams</option></select><button class="button dark full" type="submit">Create game →</button></form>
+    <form class="card entry" id="host-form"><div class="entry-icon host-icon">✳</div><h2>Host a classroom</h2><p>Control the rounds and project the live scores for everyone.</p><label for="host-name">HOST NAME</label><input id="host-name" name="name" maxlength="24" value="Teacher" required/><div class="selectors"><div><label for="length">QUESTIONS</label><select id="length" name="length"><option value="16">Quick · 16</option><option value="32" selected>Full · 32</option></select></div><div id="seconds-field"><label for="seconds">TIME LIMIT</label><select id="seconds" name="seconds"><option value="20">20 seconds</option><option value="30" selected>30 seconds</option><option value="45">45 seconds</option><option value="60">60 seconds</option></select></div></div><label for="input">WHERE STUDENTS ANSWER</label><select id="input" name="input"><option value="phones" selected>Their own devices (join with a code)</option><option value="board">One device, shared on the board</option></select><label for="mode">SCORING MODE</label><select id="mode" name="mode"><option value="individual">Individual players</option><option value="teams">Two auto-balanced teams</option></select><div id="roster-field" hidden><label for="roster">STUDENT NAMES (ONE PER LINE)</label><textarea id="roster" name="roster" rows="5" maxlength="1200" placeholder="Ana&#10;Ben&#10;Cleo"></textarea></div><button class="button dark full" type="submit">Create game →</button></form>
   </section>
   <div class="intro-foot">No student accounts needed. The teacher hosts a room, shares the code, and starts the game when everyone is ready.</div>`;
 }
@@ -116,8 +116,8 @@ function headerRoom(s) {
 function lobby(s) {
   const host=s.role==='host';
   return `${headerRoom(s)}<div class="content-grid"><section class="card play-card">
-    <div class="mini-heading">${badge('PREPARING MISSION','orange')} ${badge(s.mode==='teams'?'Two teams':'Individual scores')}</div><h2>${host?'Invite your players':'You are in!'}</h2><p class="lead">${host?'Share the room code or invite link, then start once students have joined.':'Your teacher will begin the challenge. Keep this tab open.'}</p>
-    <div class="bigcode">${escape(s.code)}</div><p class="hint">${host?'Students can join at this website using this code.':'You are connected and ready for the first question.'}</p>
+    <div class="mini-heading">${badge('PREPARING MISSION','orange')} ${badge(s.mode==='teams'?'Two teams':'Individual scores')}</div><h2>${host?'Invite your players':'You are in!'}</h2><p class="lead">${s.input==='board'?'Students are listed below. Start the challenge when you are ready. Students do not need devices.':host?'Share the room code or invite link, then start once students have joined.':'Your teacher will begin the challenge. Keep this tab open.'}</p>
+    <div class="bigcode">${escape(s.code)}</div><p class="hint">${s.input==='board'?'Everything runs on this screen. Tap each student\'s answer as the class answers.':host?'Students can join at this website using this code.':'You are connected and ready for the first question.'}</p>
     <div class="configuration"><div><small>QUESTION CARDS</small><strong>${s.questionCount}</strong></div><div><small>ROUND TIMER</small><strong>${s.seconds}s</strong></div><div><small>PLAYERS</small><strong>${s.players.length}/60</strong></div></div>
     ${host?`<div class="controls"><button class="button primary" data-command="start" ${s.players.length===0?'disabled':''}>Start challenge →</button><button class="button outline" data-action="copy-link">Copy invite</button></div><p class="tiny muted">You can start as soon as at least one student has joined.</p>`:`<div class="waiting"><span class="pulse"></span> Waiting for the teacher to start…</div>`}
   </section>${scoreboard(s)}</div>`;
@@ -145,12 +145,12 @@ function questionView(s) {
   const round=(s.index+1);
   const progress=(round/s.questionCount)*100;
   return `${headerRoom(s)}${stageCards(s)}<div class="content-grid"><section class="card play-card">
-    <div class="question-head"><div>${badge(stageLabel)} ${badge(`CARD ${round} OF ${s.questionCount}`,'neutral')}</div><div class="timer ${seconds<=10&&!revealed?'urgent':''}" id="clock">${revealed?'✓ Revealed':`◷ ${seconds}s`}</div></div>
+    <div class="question-head"><div>${badge(stageLabel)} ${badge(`CARD ${round} OF ${s.questionCount}`,'neutral')}</div><div class="timer ${seconds<=10&&!revealed?'urgent':''}" id="clock">${s.input==='board'?'On the board':revealed?'✓ Revealed':`◷ ${seconds}s`}</div></div>
     <div class="progress"><div style="width:${progress}%"></div></div>
     <h2 class="prompt">${escape(q.prompt)}</h2>
     ${q.context?`<blockquote class="context">${highlighted(q.context,q.focus)}</blockquote>`:''}
     ${aidsHtml}
-    ${options(s)}
+    ${s.input==='board'&&host?boardEntry(s):options(s)}
     ${revealed?`<div class="explanation"><div class="eyebrow">ANSWER EXPLAINED · ${escape(q.skill)}</div><strong>${marks[q.correct]}. ${escape(q.options[q.correct])}</strong><p>${escape(q.why)}</p><div class="discuss">DISCUSSION PROMPT: ${escape(q.discuss)}</div>${!host?`<p class="personal-result">${s.answered?`Your answer: ${s.myChoice===q.correct?'correct':'incorrect'} · +${q.myPoints} points`:'You did not answer this round.'}</p>`:''}</div>`:
       `<div class="response-state">${host?`<strong>${s.answersReceived} / ${s.players.length}</strong> answers submitted · Reveal when you're ready.`:s.answered?'✓ Answer locked! Waiting for the teacher to reveal.':seconds===0?'Time is up. Waiting for the teacher.':'Choose one answer before time runs out.'}</div>`}
     ${host?`<div class="controls"><button class="button primary" data-command="${revealed?'next':'reveal'}">${revealed?(round===s.questionCount?'Finish game →':'Next card →'):'Reveal answer →'}</button><button class="button outline" data-action="finish-confirm">End game</button></div>`:''}
@@ -177,6 +177,18 @@ function focusSelector() {
   if(d.command) return `[data-command="${d.command}"]`;
   if(d.action) return `[data-action="${d.action}"]`;
   return el.id ? '#'+el.id : '';
+}
+function boardEntry(s) {
+  const q=s.question, revealed=s.status==='reveal';
+  const entries=new Map((s.entries||[]).map(e=>[e.playerId,e]));
+  const rows=s.players.slice().sort((a,b)=>a.name.localeCompare(b.name)).map(p=>{
+    const e=entries.get(p.id), chosen=e?e.choice:null;
+    let verdict='';
+    if(revealed) verdict=chosen===null?'<span class="verdict none">No answer</span>':e.correct?'<span class="verdict yes">✓ Correct</span>':'<span class="verdict no">✗ Wrong</span>';
+    return `<div class="entry-row"><span class="entry-name">${escape(p.name)}</span><div class="entry-choices">${q.options.map((o,i)=>`<button class="entry-choice ${chosen===i?'picked':''} ${revealed&&i===q.correct?'correct':''}" data-entry="${p.id}" data-choice="${i}" ${revealed?'disabled':''} aria-pressed="${chosen===i}" aria-label="${escape(p.name)}: ${marks[i]}, ${escape(o)}">${marks[i]}</button>`).join('')}</div>${verdict}</div>`;
+  }).join('') || '<p class="muted">No students yet.</p>';
+  const counts=revealed?`<div class="entered">${q.counts.map((n,i)=>`${marks[i]}: ${n}`).join(' · ')}</div>`:`<div class="entered">${(s.entries||[]).length} of ${s.players.length} entered</div>`;
+  return `<div class="board-entry">${revealed?'':'<p class="muted tiny">Tap each student\'s answer. Tap it again to clear it.</p>'}${rows}${counts}</div>`;
 }
 function readAloud() {
   const q=snapshot?.question;
@@ -205,7 +217,7 @@ function announceChange(prev,next) {
   else if(next.status==='finished' && prev?.status!=='finished') announce('The game is over.');
 }
 function updateClock() {
-  if(!snapshot || snapshot.status!=='playing') return;
+  if(!snapshot || snapshot.status!=='playing' || snapshot.input==='board') return;
   const el=document.getElementById('clock');
   if(!el) return;
   const seconds=getSeconds(snapshot);
@@ -290,8 +302,16 @@ app.addEventListener('submit', async event=>{
   });
 });
 app.addEventListener('click', async event=>{
-  const control=event.target.closest('[data-command],[data-action],[data-choice]');
+  const control=event.target.closest('[data-command],[data-action],[data-choice],[data-entry]');
   if(!control)return;
+  if(control.dataset.entry!==undefined){
+    const current=snapshot?.entries?.find(e=>e.playerId===control.dataset.entry);
+    const choice=Number(control.dataset.choice);
+    const next=current&&current.choice===choice?null:choice;
+    try{ await api('enterAnswer',{code:session.code,token:session.token,playerId:control.dataset.entry,choice:next}); await refresh(); }
+    catch(err){ showError(err); }
+    return;
+  }
   if(control.dataset.action==='read'){readAloud();return;}
   if(control.dataset.action==='hint'){hintOpen=!hintOpen;render();return;}
   if(control.dataset.action==='leave'){clearSession();return;}
@@ -316,6 +336,12 @@ app.addEventListener('click', async event=>{
   }
 });
 
+app.addEventListener('change', e=>{
+  if(e.target.id!=='input') return;
+  const board=e.target.value==='board';
+  document.getElementById('roster-field').hidden=!board;
+  document.getElementById('seconds-field').hidden=board;
+});
 if(session?.code && session?.token) {
   history.replaceState(null,'','?room='+encodeURIComponent(session.code));
   startWatching();

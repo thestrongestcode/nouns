@@ -126,10 +126,25 @@ I reread Parts 1 and 2 looking for errors and gaps.
 | P15 browser tests in CI | Later |
 | E1 variety | Done in part (64 cards, new formats) |
 | E2 missing topics | Done |
-| E4 optional speed bonus | Later (needs a database column) |
+| E4 optional speed bonus | Later, phone games only (needs a database column) |
 | E5 wrong-answer reasons | Later (needs teacher review) |
 | E6 card 32 wording | Done |
 | E7 read aloud | Partly |
 | E8 debrief | Done |
 | E9 glossary | Later |
 | E10 retention | Partly |
+
+## Design change: one device on the board
+
+Teacher clarification: the game should be played on one device and shared on the board. Students answer out loud or on paper, and the teacher taps each answer.
+
+What changed:
+
+- Rooms have an `input` setting: `phones` (the original game) or `board` (new).
+- Board rooms take a roster of 1 to 30 names instead of student joins. Names must be unique (case-insensitive).
+- The teacher taps each student's letter on a grid. Tapping the same letter again clears it.
+- Board rooms have no timer and no speed bonus. A correct answer is worth 10 points.
+- Scoring modes still apply: individual, or two auto-balanced teams compared by average points per player.
+- Database: `vault_rooms.input` column, a new `vault_board_answer` function (one answer per player per card, upserted), and `vault_submit` refuses board rooms.
+
+Still open for the board design: a speed bonus would not make sense without student devices, so E4 is now marked as phone-only if it is ever added.

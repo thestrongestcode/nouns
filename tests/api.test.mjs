@@ -164,3 +164,106 @@ test('an unconfigured server explains itself without leaking internals', async (
   assert.equal(result.status, 503);
   assert.match(result.json.error, /Server not configured/);
 });
+
+// ---- Board mode: one device, the teacher enters every answer ----
+
+async function newBoardGame({ names = 'Ana\nBen\nCleo', length = 16, mode = 'individual' } = {}) {
+  const db = createMemoryDatabase();
+  const call = body => handleRequest(body, { getDb: () => db });
+  const host = (await call({ action: 'create', name: 'Teacher', length, seconds: 30, mode, input: 'board', roster: names })).json;
+  const { players } = (await call({ action: 'state', code: host.code, token: host.token })).json;
+  const control = command => call({ action: 'control', code: host.code, token: host.token, command });
+  const enter = (playerId, choice) => call({ action: 'enterAnswer', code: host.code, token: host.token, playerId, choice });
+  const state = () => call({ action: 'state', code: host.code, token: host.token }).then(r => r.json);
+  return { db, call, host, players, control, enter, state };
+}
+
+test('board mode: the roster is created from the names entered, with no student joins', async () => {
+  const game = await newBoardGame({ names: 'Ana\nBen\nCleo\nDev' });
+  assert.deepEqual(game.players.map(p => p.name).sort(), ['Ana', 'Ben', 'Cleo', 'Dev']);
+  assert.equal(game.players.length, 4);
+  const join = await game.call({ action: 'join', code: game.host.code, name: 'Eli' });
+  assert.equal(join.status, 400);
+  assert.match(join.json.error, /shared on one device/i);
+});
+
+test('board mode: duplicate names and empty rosters are refused', async () => {
+  const db = createMemoryDatabase();
+  const call = body => handleRequest(body, { getDb: () => db });
+  const dup = await call({ action: 'create', name: 'T', length: 16, seconds: 30, mode: 'individual', input: 'board', roster: 'Ana\nana' });
+  assert.equal(dup.status, 400);
+  assert.match(dup.json.error, /listed twice/i);
+  const empty = await call({ action: 'create', name: 'T', length: 16, seconds: 30, mode: 'individual', input: 'board', roster: '  \n ' });
+  assert.equal(empty.status, 400);
+});
+
+test('board mode: the teacher enters answers, points have no speed bonus, and the reveal scores', async () => {
+  const game = await newBoardGame();
+  const [ana, ben, cleo] = game.players;
+  await game.control('start');
+  const snapshot = await game.state();
+  assert.equal(snapshot.input, 'board');
+  assert.equal(snapshot.entries.length, 0);
+  const slot = correctSlot(snapshot);
+
+  assert.equal((await game.enter(ana.id, slot)).status, 200);
+  assert.equal((await game.enter(ben.id, (slot + 1) % 4)).status, 200);
+  game.db.advance(120); // no timer on a board, so a long pause must not block entries
+  assert.equal((await game.enter(cleo.id, slot)).status, 200);
+
+  const before = await game.state();
+  assert.equal(before.entries.length, 3);
+  assert.equal(before.answersReceived, 3);
+  assert.equal(before.entries.find(e => e.playerId === ben.id).correct, undefined, 'correctness is hidden until the reveal');
+
+  await game.control('reveal');
+  const revealed = await game.state();
+  assert.equal(revealed.entries.find(e => e.playerId === ana.id).correct, true);
+  assert.equal(revealed.entries.find(e => e.playerId === ben.id).correct, false);
+  const total = revealed.players.reduce((n, p) => n + p.score, 0);
+  assert.equal(total, 20, 'two correct answers at 10 points each, with no speed bonus');
+});
+
+test('board mode: the teacher can change or clear an answer before the reveal', async () => {
+  const game = await newBoardGame();
+  const [ana] = game.players;
+  await game.control('start');
+  const slot = correctSlot(await game.state());
+  await game.enter(ana.id, (slot + 1) % 4);
+  await game.enter(ana.id, slot);
+  let snapshot = await game.state();
+  assert.equal(snapshot.entries.length, 1, 'changing an answer replaces it, it does not add a second one');
+  assert.equal(snapshot.entries[0].choice, slot);
+  await game.enter(ana.id, null);
+  snapshot = await game.state();
+  assert.equal(snapshot.entries.length, 0, 'clearing removes the entry');
+});
+
+test('board mode: students cannot answer, and entries are teacher-only', async () => {
+  const game = await newBoardGame();
+  await game.control('start');
+  const asStudent = await game.call({ action: 'enterAnswer', code: game.host.code, token: 'f'.repeat(64), playerId: game.players[0].id, choice: 0 });
+  assert.equal(asStudent.status, 403);
+  const ownerOnly = await game.call({ action: 'answer', code: game.host.code, token: game.host.token, choice: 0 });
+  assert.equal(ownerOnly.status, 400);
+});
+
+test('board mode: a whole game runs and the report lists missed concepts', async () => {
+  const game = await newBoardGame({ names: 'Ana\nBen' });
+  const [ana, ben] = game.players;
+  await game.control('start');
+  for (let card = 0; card < 16; card++) {
+    const snapshot = await game.state();
+    const slot = correctSlot(snapshot);
+    await game.enter(ana.id, slot);
+    await game.enter(ben.id, (slot + 1) % 4);
+    await game.control('reveal');
+    await game.control('next');
+  }
+  const finished = await game.state();
+  assert.equal(finished.status, 'finished');
+  assert.equal(finished.players.find(p => p.name === 'Ana').score, 160);
+  assert.equal(finished.players.find(p => p.name === 'Ben').score, 0);
+  assert.ok(finished.report.length > 0, 'Ben missed everything, so there should be concepts to review');
+  assert.equal(finished.myResult, null, 'the teacher has no personal result');
+});

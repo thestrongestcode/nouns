@@ -1,12 +1,18 @@
 // The complete game API, with no Node-only imports. It runs on Vercel (through api/game.js),
 // in the local mock server, and in the browser for the static Pages demo.
 // Callers pass a database object with the same shape as the Supabase client subset used here.
+//
+// Two ways to play a room:
+//   phones: each student joins on their own device with the room code and answers there.
+//   board:  one device (the teacher's) runs the game and is shared on the board. The teacher
+//           enters each student's answer. Students never join, and there is no countdown.
 
 import { QUESTIONS, CHAMBERS } from './questions.js';
 import { optionOrder, shuffledCorrectIndex, pickRoomQuestions } from './game-logic.js';
 
 const encoder = new TextEncoder();
 const CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+const BOARD_MAX_STUDENTS = 30;
 
 const toHex = bytes => Array.from(bytes, b => b.toString(16).padStart(2, '0')).join('');
 const randomHex = bytes => {
@@ -51,6 +57,22 @@ function sanitizeName(v) {
   validation(!/[<>\u0000-\u001F]/.test(name), 'Name contains invalid characters');
   return name;
 }
+// One student name per line. Names must be unique (ignoring capitals).
+function parseRoster(value) {
+  validation(typeof value === 'string', 'Enter the student names, one per line');
+  const names = [];
+  const seen = new Set();
+  for (const line of value.split(/\r?\n/)) {
+    if (!line.trim()) continue;
+    const name = sanitizeName(line);
+    if (seen.has(name.toLowerCase())) throw fail(`"${name}" is listed twice. Each student needs a unique name.`, 400);
+    seen.add(name.toLowerCase());
+    names.push(name);
+  }
+  validation(names.length >= 1, 'Enter at least one student name');
+  validation(names.length <= BOARD_MAX_STUDENTS, `One device supports up to ${BOARD_MAX_STUDENTS} students`);
+  return names;
+}
 
 async function getRoom(db, code) {
   const { data, error } = await db.from('vault_rooms').select('*').eq('code', code).maybeSingle();
@@ -82,17 +104,35 @@ async function createGame(db, body) {
   const hostName = sanitizeName(body.name || 'Teacher');
   validation([16, 32].includes(body.length), 'Choose 16 or 32 questions');
   validation(['individual', 'teams'].includes(body.mode), 'Choose individual or team scoring');
+  validation(['phones', 'board'].includes(body.input || 'phones'), 'Choose where students answer');
+  const input = body.input || 'phones';
   validation(Number.isInteger(body.seconds) && body.seconds >= 15 && body.seconds <= 90, 'Choose 15–90 seconds per question');
+  const roster = input === 'board' ? parseRoster(body.roster) : null;
   const secret = randomHex(32);
   const hostHash = await sha256(secret);
   for (let i = 0; i < 8; i++) {
     const code = roomCodeText();
     const { data, error } = await db.from('vault_rooms').insert({
-      code, host_token_hash: hostHash, host_name: hostName, mode: body.mode,
+      code, host_token_hash: hostHash, host_name: hostName, mode: body.mode, input,
       question_count: body.length, seconds_per_question: body.seconds,
     }).select('id,code').single();
-    if (!error) return { code: data.code, token: secret, role: 'host' };
-    if (error.code !== '23505') check(error);
+    if (error) {
+      if (error.code !== '23505') check(error);
+      continue;
+    }
+    if (roster) {
+      // Students on a board have no device, so their rows get a random token nobody holds.
+      const counts = { A: 0, B: 0 };
+      for (const name of roster) {
+        const team = counts.A <= counts.B ? 'A' : 'B';
+        counts[team]++;
+        const { error: playerError } = await db.from('vault_players').insert({
+          room_id: data.id, token_hash: await sha256(randomHex(32)), nickname: name, team,
+        });
+        check(playerError);
+      }
+    }
+    return { code: data.code, token: secret, role: 'host' };
   }
   throw new Error('Could not generate an unused room code. Please retry.');
 }
@@ -101,6 +141,7 @@ async function joinGame(db, body) {
   const code = sanitizeCode(body.code);
   const name = sanitizeName(body.name);
   const room = await getRoom(db, code);
+  validation(room.input !== 'board', 'This game is shared on one device. Students do not join from their own devices.');
   validation(room.status === 'lobby', 'This game has already started. Ask the host to start a new game.');
   const { data: players, error: playerError } = await db.from('vault_players')
     .select('id,team,nickname').eq('room_id', room.id);
@@ -161,10 +202,14 @@ async function getState(db, body) {
   }
   return {
     code: room.code, roomId: room.id, hostName: room.host_name, role: auth.role, selfId: auth.player?.id || null,
-    status: room.status, mode: room.mode, index, questionCount: room.question_count,
+    status: room.status, mode: room.mode, input: room.input || 'phones', index, questionCount: room.question_count,
     seconds: room.seconds_per_question, startedAt: room.question_started_at,
     players: players.map(p => ({ id: p.id, name: p.nickname, team: p.team, score: p.score })),
     answersReceived: answers.length, answered: !!mine, myChoice: mine?.choice ?? null,
+    // The teacher's view of each student's entry for the current card (board mode only).
+    entries: auth.role === 'host' && card ? answers.map(a => ({
+      playerId: a.player_id, choice: a.choice, ...(revealed ? { correct: a.correct } : {}),
+    })) : undefined,
     report, myResult,
     // Cards actually played. A game ended early stops on the current card.
     playedCount: room.status === 'finished' ? Math.min(room.question_count, index + 1) : null,
@@ -188,11 +233,33 @@ async function submit(db, body) {
   const auth = await authorize(db, room, body.token);
   validation(auth.role === 'player', 'Only students can submit answers');
   validation(Number.isInteger(body.choice) && body.choice >= 0 && body.choice <= 3, 'Choose an answer');
+  validation((room.input || 'phones') === 'phones', 'The teacher enters answers for this game');
   const card = roomCards(room)[room.question_index];
   validation(room.status === 'playing' && !!card, 'The question is not open');
   const { error } = await db.rpc('vault_submit', {
     p_room: room.id,
     p_player: auth.player.id,
+    p_question: room.question_index,
+    p_choice: body.choice,
+    p_correct_choice: shuffledCorrectIndex(optionOrder(room.id, card.id), card.correct),
+  });
+  check(error);
+  return { ok: true };
+}
+
+// Board mode: the teacher records (or clears, with choice null) a student's answer.
+async function enterAnswer(db, body) {
+  const room = await getRoom(db, sanitizeCode(body.code));
+  const auth = await authorize(db, room, body.token);
+  validation(auth.role === 'host', 'Only the teacher can enter answers');
+  validation(room.input === 'board', 'Students answer on their own devices in this game');
+  validation(typeof body.playerId === 'string' && /^[0-9a-f-]{36}$/i.test(body.playerId), 'Choose a student');
+  validation(body.choice === null || (Number.isInteger(body.choice) && body.choice >= 0 && body.choice <= 3), 'Choose an answer');
+  const card = roomCards(room)[room.question_index];
+  validation(room.status === 'playing' && !!card, 'The question is not open');
+  const { error } = await db.rpc('vault_board_answer', {
+    p_room: room.id,
+    p_player: body.playerId,
     p_question: room.question_index,
     p_choice: body.choice,
     p_correct_choice: shuffledCorrectIndex(optionOrder(room.id, card.id), card.correct),
@@ -214,7 +281,7 @@ async function control(db, body) {
 // Turn any thrown error into an HTTP status and a message that is safe to show.
 function errorResponse(err) {
   const status = err.status || (err.message?.startsWith('Server not configured') ? 503 : 400);
-  const known = /(already answered|no longer accepting|time is up|nothing to reveal|reveal the answer|no active game|game already started|at least one student|invalid answer|room not found|duplicate key)/i;
+  const known = /(already answered|no longer accepting|time is up|nothing to reveal|reveal the answer|no active game|game already started|at least one student|invalid answer|room not found|duplicate key|not in room|shared on one device|teacher enters)/i;
   const safe = err.status || known.test(err.message) || status === 503;
   if (!safe) console.error('Word Vault error:', err.message);
   return {
@@ -237,6 +304,7 @@ export async function handleRequest(body, { getDb, supabaseUrl = null, publishab
       case 'join': json = await joinGame(db, body); break;
       case 'state': json = await getState(db, body); break;
       case 'answer': json = await submit(db, body); break;
+      case 'enterAnswer': json = await enterAnswer(db, body); break;
       case 'control': json = await control(db, body); break;
       default: throw fail('Unknown action', 400);
     }

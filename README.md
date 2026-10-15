@@ -15,7 +15,7 @@ Each game draws a different balanced mix of cards from the bank: four per chambe
 | Version | Where it runs | Multiple devices? | Use it for |
 | --- | --- | --- | --- |
 | **Practice demo** | GitHub Pages (static site) | No. Tabs in one browser share a room. | Trying the game, checking the design, rehearsing |
-| **Classroom game** | Vercel (with a Supabase database) | Yes | Real classes |
+| **Classroom game** | Vercel (with a Supabase database) | Yes, students on their own devices | Real classes |
 
 The demo is a test build. It runs the same game rules in the browser, so it has no server and no database. The classroom game needs the Vercel setup below.
 
@@ -62,11 +62,24 @@ GitHub Pages can only serve static files, so the demo cannot run `/api/game`. Th
 
 Then open your Vercel site, choose **Host a classroom**, share the six-character code or invite link, and let students join. Click **Start challenge**, **Reveal answer**, and **Next card** to run the game.
 
+## Two ways to play
+
+**Students on their own devices (phones or laptops).** The teacher chooses 16 or 32 questions, 20 to 60 seconds per card, and individual or team scoring. Students join with the room code and a nickname.
+
+**One device, shared on the board.** The teacher runs the game on one computer that is projected or shared on the board, and enters each student's answer. Use this when students do not have devices.
+
+- The teacher enters the roster (one name per line, up to 30 students, names must be unique) and picks **Scoring mode**: individual players or two auto-balanced teams. Scoring mode is set when the game is created.
+- The teacher taps each student's letter on the grid. Tap a letter again to clear it.
+- There is no timer and no speed bonus. Each correct answer is worth **10 points**.
+- Reveal answer, then Next card, works the same as the phone game.
+- Students never see the screen, so the board is the only place answers appear.
+
+On the Vercel version, set **Where students answer** to **One device, shared on the board** when creating the game. The database needs the `input` column from the current `supabase/schema.sql`; re-running that file on an existing project adds it.
+
 ## How it plays
 
-- The teacher chooses 16 or 32 questions, 20 to 60 seconds per card, and individual or team scoring.
+- Phone games: everyone sees the same question at the same time, and each student answers once.
 - Students join with the room code and a nickname. No accounts.
-- Everyone sees the same question at the same time, and each student answers once.
 - **10 points** for a correct answer, plus **5** more if it is submitted within the first 10 seconds. Wrong or missed answers score 0. Scores update when the teacher reveals the answer.
 - **Need a hint?** shows the hint for the current card. Hints never cost points.
 - **Read aloud** speaks the question and options with the browser's built-in voice. Voice quality depends on the device.
@@ -129,6 +142,8 @@ word-vault-multiplayer/
 
 ## Verification status
 
-`npm test` runs 27 checks: the question bank (shape, variety, highlighted words that really appear in their sentences, no duplicate cards), the shuffle and card selection, the scoring and team rules, and full games played through the engine. The static demo was also played end to end in a headless browser with five student tabs and a host, with no page errors.
+`npm test` runs 33 checks: the question bank (shape, variety, highlighted words that really appear in their sentences, no duplicate cards), the shuffle and card selection, the scoring and team rules, full phone games and one-device board games played through the engine. The static demo was also played end to end in a headless browser with five student tabs and a host, with no page errors.
+
+The one-device board game was also played end to end in a headless browser: entering answers, clearing one, revealing, moving on, and finishing, with no page errors.
 
 **Not tested here:** a live Supabase and Vercel deployment. The engine and the in-memory database mirror `supabase/schema.sql` but do not run it. Before a real class, play one host screen and two student devices.

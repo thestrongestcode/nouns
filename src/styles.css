@@ -31,3 +31,19 @@
 .hint-box{background:#fff8e8;border-left:4px solid #f5ae50;border-radius:8px;padding:12px 14px;margin:0 0 14px;font-size:15px;color:#4d5a4f;line-height:1.5}
 /* Notice shown only in the static Pages demo. */
 .notice.demo-note{background:#fff3dc;color:#6b4a14;border-radius:12px;padding:12px 16px;margin:0 0 16px;font-size:14px;line-height:1.5}
+
+/* One-device board: the teacher's answer grid. */
+.board-entry{margin:6px 0 14px}
+.entry-row{display:grid;grid-template-columns:1fr auto;align-items:center;gap:6px 12px;padding:10px 0;border-bottom:1px solid #e3ebe8}
+.entry-name{font-weight:750;font-size:16px;color:#183446;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.entry-choices{display:flex;gap:8px}
+.entry-choice{width:44px;height:44px;border-radius:12px;border:2px solid #c9dad5;background:#fff;font-weight:850;font-size:16px;color:#183446}
+.entry-choice.picked{background:#11394a;border-color:#11394a;color:#fff}
+.entry-choice.correct{border-color:#2a9d7a}
+.entry-choice:disabled{cursor:default;opacity:1}
+.verdict{grid-column:1 / -1;font-size:13px;font-weight:800}
+.verdict.yes{color:#1c7a5c}
+.verdict.no{color:#a0412d}
+.verdict.none{color:#66808c}
+.entered{margin-top:12px;font-size:14px;font-weight:750;color:#4d6570}
+@media(max-width:700px){.entry-row{grid-template-columns:1fr}.entry-choices{justify-content:flex-start}}

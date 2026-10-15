@@ -27,7 +27,7 @@ export function createMemoryDatabase(initial) {
     switch (table) {
       case 'vault_rooms':
         return {
-          id: newId(), host_name: 'Teacher', status: 'lobby', mode: 'individual',
+          id: newId(), host_name: 'Teacher', status: 'lobby', mode: 'individual', input: 'phones',
           question_count: 16, question_index: 0, seconds_per_question: 30,
           question_started_at: null, created_at: stamp(), ...row,
         };
@@ -100,6 +100,7 @@ export function createMemoryDatabase(initial) {
     if (!room || room.status !== 'playing' || room.question_index !== p_question) {
       throw new Error('This question is no longer accepting answers');
     }
+    if (room.input === 'board') throw new Error('The teacher enters answers for this game');
     if (elapsedSeconds(room) > room.seconds_per_question) throw new Error('Time is up for this question');
     const valid = n => Number.isInteger(n) && n >= 0 && n <= 3;
     if (!valid(p_choice) || !valid(p_correct_choice)) throw new Error('Invalid answer choice');
@@ -112,6 +113,29 @@ export function createMemoryDatabase(initial) {
     tables.vault_answers.push(withDefaults('vault_answers', {
       room_id: p_room, player_id: p_player, question_index: p_question, choice: p_choice, correct, points,
     }));
+    emit(p_room);
+  }
+
+  // Board mode: the teacher records or clears a student's answer. No timer, so no speed bonus.
+  function boardAnswer({ p_room, p_player, p_question, p_choice, p_correct_choice }) {
+    const room = findRoom(p_room);
+    if (!room || room.input !== 'board') throw new Error('Students answer on their own devices in this game');
+    if (room.status !== 'playing' || room.question_index !== p_question) {
+      throw new Error('This question is no longer accepting answers');
+    }
+    if (!tables.vault_players.some(p => p.id === p_player && p.room_id === p_room)) throw new Error('Player not in room');
+    const at = tables.vault_answers.findIndex(a => a.player_id === p_player && a.question_index === p_question);
+    if (p_choice === null || p_choice === undefined) {
+      if (at >= 0) tables.vault_answers.splice(at, 1);
+    } else {
+      const correct = p_choice === p_correct_choice;
+      const row = withDefaults('vault_answers', {
+        room_id: p_room, player_id: p_player, question_index: p_question, choice: p_choice,
+        correct, points: correct ? 10 : 0,
+      });
+      if (at >= 0) tables.vault_answers[at] = row;
+      else tables.vault_answers.push(row);
+    }
     emit(p_room);
   }
 
@@ -159,6 +183,7 @@ export function createMemoryDatabase(initial) {
     rpc(name, args) {
       try {
         if (name === 'vault_submit') submit(args);
+        else if (name === 'vault_board_answer') boardAnswer(args);
         else if (name === 'vault_control') control(args);
         else throw new Error('Unknown function ' + name);
         return Promise.resolve({ data: null, error: null });
