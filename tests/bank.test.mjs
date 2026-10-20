@@ -56,7 +56,8 @@ test('the label answer matches the card skill, so the debrief names the right co
 });
 
 test('the highlighted word is a whole word, so the board never highlights part of a longer word', () => {
-  for (const q of QUESTIONS) {
+  // Only label cards are highlighted; word-card answers are checked as whole words above.
+  for (const q of QUESTIONS.filter(card => card.type === 'label')) {
     const at = q.context.indexOf(q.focus);
     const before = q.context[at - 1] || ' ';
     const after = q.context[at + q.focus.length] || ' ';
@@ -69,6 +70,14 @@ test('quotations name their source', () => {
     assert.equal(typeof q.source, 'string', `card ${q.id} source`);
   }
   assert.ok(QUESTIONS.filter(q => q.source).length >= 20, 'expected the literary lines to carry sources');
+});
+
+test('no card uses types the class has not covered', () => {
+  const uncovered = /gerund|compound|non-count|reciprocal/i;
+  for (const q of QUESTIONS) {
+    const text = [q.skill, q.prompt, q.hint, q.why, q.discuss, ...q.options].join(' ');
+    assert.ok(!uncovered.test(text), `card ${q.id} mentions a type that was not covered`);
+  }
 });
 
 test('every card has a hint, an explanation, and a discussion question', () => {

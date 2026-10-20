@@ -1,5 +1,4 @@
-// Study flashcards for the home page: one card for every type of noun and pronoun the game asks about,
-// plus common nouns as a starting point. The front shows the name. The back shows what it means,
+// Study flashcards for the home page: one card for every type of noun and pronoun the game asks about. The front shows the name. The back shows what it means,
 // examples, a sentence (mostly famous lines), and a tip.
 // `skill` matches the `skill` field on the game cards, so the tests can check nothing is missing.
 
@@ -41,32 +40,11 @@ export const FLASHCARDS = [
     tip: 'In American English it usually takes a singular verb: “The jury is out.”',
   },
   {
-    group: 'Nouns', skill: 'compound noun',
-    definition: 'Is made of two or more words that work together as one noun.',
-    examples: ['heartbreak', 'lighthouse', 'countrymen', 'mother-in-law'],
-    sentence: 'Friends, Romans, countrymen, lend me your ears;', focus: 'countrymen',
-    tip: 'Compounds can be closed (lighthouse), hyphenated (mother-in-law), or open (high school).',
-  },
-  {
-    group: 'Nouns', skill: 'non-count noun',
-    definition: 'Names something that cannot be counted, so it has no plural and does not take “a” or “an.”',
-    examples: ['advice', 'information', 'water', 'punctuation'],
-    sentence: 'Water, water, every where, / Nor any drop to drink.', focus: 'Water',
-    tip: 'Use “much” and “less” with it, not “many” and “fewer.”',
-  },
-  {
     group: 'Nouns', skill: 'possessive noun',
     definition: 'Shows ownership, usually with an apostrophe and s.',
     examples: ['summer’s', 'narrator’s', 'Dickens’s', 'sisters’'],
     sentence: 'Shall I compare thee to a summer’s day?', focus: 'summer’s',
     tip: 'For a plural that ends in s, add only an apostrophe: the sisters’ hopes.',
-  },
-  {
-    group: 'Nouns', skill: 'gerund',
-    definition: 'Is a verb form ending in -ing that works as a noun.',
-    examples: ['thinking', 'parting', 'reading', 'swimming'],
-    sentence: 'There is nothing either good or bad, but thinking makes it so.', focus: 'thinking',
-    tip: 'If you can replace the -ing word with “it” and the sentence still works, it is probably a gerund.',
   },
 
   // Pronouns
@@ -125,12 +103,5 @@ export const FLASHCARDS = [
     examples: ['who', 'whom', 'whose', 'what', 'which'],
     sentence: 'I’m Nobody! Who are you?', focus: 'Who',
     tip: 'Answer the question with “he” or “him.” If “him” fits, the question needs “whom.”',
-  },
-  {
-    group: 'Pronouns', skill: 'reciprocal pronoun',
-    definition: 'Shows an action or feeling shared both ways between two or more people.',
-    examples: ['each other', 'one another'],
-    sentence: 'Romeo and Juliet pledge their love to each other on the night they meet.', focus: 'each other',
-    tip: '“They praised each other” is not the same as “They praised themselves.”',
   },
 ];

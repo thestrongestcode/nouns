@@ -33,7 +33,7 @@ The workflow in `.github/workflows/pages.yml` builds the game and publishes it o
 - **Discuss:** after each card the board shows why the answer is right and a question for the class.
 - **Finish:** the winner is shown, with the concept most cards were missed on.
 - **Help:** "Show hint" gives a clue, "Read aloud" reads the sentence and the choices, and "How to play" explains the rules on screen.
-- **Flashcards:** the home page has a flip card for each of the 18 noun and pronoun types, from common nouns to gerunds and reciprocal pronouns. The back shows what it means, examples, a sentence, and a tip for spotting it. "Flip all" reveals every card at once.
+- **Flashcards:** the home page has a flip card for each of the 14 noun and pronoun types the game uses. The back shows what it means, examples, a sentence, and a tip for spotting it. "Flip all" reveals every card at once.
 
 The game is saved in the browser tab, so a page refresh keeps the current game. "Leave this game" ends it.
 
@@ -58,10 +58,10 @@ npm test
 
 ## The cards
 
-- **Noun Forge:** kinds of noun, including compound nouns, non-count nouns, and gerunds.
-- **Pronoun Portal:** kinds of pronoun, including reciprocal and intensive pronouns.
+- **Noun Forge:** kinds of noun: common, proper, concrete, abstract, collective, and possessive.
+- **Pronoun Portal:** kinds of pronoun: personal, possessive, reflexive, intensive, demonstrative, indefinite, relative, and interrogative.
 - **Repair Lab:** look-alikes, where the same word does different jobs ("that" as a relative or demonstrative pronoun, reflexive vs. intensive, "between you and me").
-- **Master Lock:** famous lines from Shakespeare, Austen, Dickens, Fitzgerald, Wilde, Shelley, Melville, and Coleridge.
+- **Master Lock:** famous lines from Shakespeare, Austen, Dickens, Fitzgerald, Wilde, Shelley, Melville, and Keats.
 
 About half the sentences are real lines from public-domain works, and the board shows the source under each. Discussion questions tie the grammar back to the text.
 
