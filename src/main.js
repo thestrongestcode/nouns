@@ -1,5 +1,6 @@
 import './styles.css';
 import { CHAMBERS } from './questions.js';
+import { FLASHCARDS } from './flashcards.js';
 import {
   buildGame, answer, nextCard, winner, debrief, countText, QUESTION_COUNTS, POINTS_PER_CORRECT,
 } from './game.js';
@@ -23,7 +24,13 @@ function restore() {
     const saved = JSON.parse(sessionStorage.getItem(KEY) || 'null');
     if (!saved || typeof saved !== 'object') return;
     view = { ...view, ...saved, setup: { ...DEFAULT_SETUP, ...(saved.setup || {}) } };
+    // A damaged or outdated saved game would leave the board blank, so drop it and start at home.
+    const g = view.game;
+    const valid = g && Array.isArray(g.cards) && Array.isArray(g.teams) && g.teams.length === 2
+      && Number.isInteger(g.index) && g.index >= 0 && g.index <= g.cards.length;
+    if (!valid) view.game = null;
     if ((view.screen === 'board' || view.screen === 'finish') && !view.game) view.screen = 'home';
+    if (view.screen === 'board' && view.game.index >= view.game.cards.length) view.screen = 'finish';
   } catch { /* start fresh */ }
 }
 
@@ -50,6 +57,7 @@ function announce(text) {
 
 function renderHome() {
   return `
+    <div class="home-stack">
     <section class="card home">
       <p class="eyebrow">Word Vault / Teacher board</p>
       <h1 tabindex="-1" data-focus>Unlock the next clue</h1>
@@ -57,8 +65,62 @@ function renderHome() {
       <div class="actions">
         <button class="button primary" data-action="setup">Set up a game</button>
         <button class="button outline" data-action="how">How to play</button>
+        <a class="button text" href="#study">Study the flashcards</a>
       </div>
+    </section>
+    ${renderFlashcards()}
+    </div>`;
+}
+
+// One flip card per noun and pronoun type. Flipping only toggles the card in place (no re-render),
+// so keyboard focus stays on the card.
+function flashcard(card) {
+  let sentence = esc(card.sentence);
+  sentence = sentence.replace(esc(card.focus), `<mark class="focus">${esc(card.focus)}</mark>`);
+  const kind = card.group === 'Nouns' ? 'noun' : 'pronoun';
+  return `
+    <button class="flashcard ${kind}" type="button" data-action="flip" aria-pressed="false">
+      <span class="face front">
+        <span class="fc-group">${kind}</span>
+        <span class="fc-name">${esc(capitalize(card.skill))}</span>
+        <span class="fc-cue">Tap to flip</span>
+      </span>
+      <span class="face back" hidden>
+        <span class="fc-title">${esc(capitalize(card.skill))}</span>
+        <span class="fc-def">${esc(card.definition)}</span>
+        <span class="fc-ex"><strong>Examples:</strong> ${card.examples.map(esc).join(', ')}</span>
+        <span class="fc-sentence">${sentence}</span>
+        <span class="fc-tip"><strong>Tip:</strong> ${esc(card.tip)}</span>
+      </span>
+    </button>`;
+}
+
+function renderFlashcards() {
+  const group = name => FLASHCARDS.filter(c => c.group === name).map(flashcard).join('');
+  return `
+    <section class="card study" id="study" aria-labelledby="study-title">
+      <p class="eyebrow">Study the types</p>
+      <h2 id="study-title" class="study-title">Noun and pronoun flashcards</h2>
+      <p class="study-lead">Tap a card to see what it means, with examples and a tip for spotting it. Tap it again to flip it back.</p>
+      <div class="deck-controls">
+        <button class="textlink" type="button" data-action="flip-all">Flip all</button>
+        <button class="textlink" type="button" data-action="flip-none">Flip all back</button>
+      </div>
+      <h3 class="deck-title">Nouns</h3>
+      <div class="deck">${group('Nouns')}</div>
+      <h3 class="deck-title">Pronouns</h3>
+      <div class="deck">${group('Pronouns')}</div>
     </section>`;
+}
+
+function setFlipped(button, flipped) {
+  button.setAttribute('aria-pressed', String(flipped));
+  button.classList.toggle('is-flipped', flipped);
+  button.querySelector('.front').hidden = flipped;
+  button.querySelector('.back').hidden = !flipped;
+  button.classList.remove('is-turning');
+  void button.offsetWidth; // restart the flip animation
+  button.classList.add('is-turning');
 }
 
 function renderHow() {
@@ -334,6 +396,15 @@ app.addEventListener('click', event => {
   if (!el) return;
   const action = el.dataset.action;
   const g = view.game;
+
+  if (action === 'flip') {
+    setFlipped(el, el.getAttribute('aria-pressed') !== 'true');
+    return;
+  }
+  if (action === 'flip-all' || action === 'flip-none') {
+    app.querySelectorAll('.flashcard').forEach(card => setFlipped(card, action === 'flip-all'));
+    return;
+  }
 
   if (action === 'home' || action === 'how' || action === 'setup') {
     view.screen = action;
