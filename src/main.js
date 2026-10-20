@@ -139,7 +139,7 @@ function renderHow() {
         </li>
         <li>
           <h2>Read the board</h2>
-          <p>There are two kinds of card. A <strong>label card</strong> highlights one word, and the question is "This highlighted word is...". Pick the full label, such as "a common noun." A <strong>word card</strong> has no highlight, and the question is "Which word in this sentence is a...?" Pick the word.</p>
+          <p>There are two kinds of card. A <strong>label card</strong> highlights one word, and the question is "This highlighted word is...". Pick the full label, such as "an abstract noun." A <strong>word card</strong> has no highlight, and the question is "Which word in this sentence is a...?" Pick the word.</p>
         </li>
         <li>
           <h2>Answer together</h2>
@@ -296,6 +296,7 @@ function renderBoard() {
 
         <h1 class="prompt" tabindex="-1" data-focus>${esc(card.prompt)}</h1>
         <p class="sentence">${sentence}</p>
+        ${card.source ? `<p class="source">${esc(card.source)}</p>` : ''}
         <div class="aids">
           <button class="textlink" data-action="read">Read aloud</button>
         </div>

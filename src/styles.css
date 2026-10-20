@@ -228,6 +228,7 @@ textarea { resize: vertical; }
   padding: 18px 22px;
   margin: 18px 0 8px;
 }
+.source { font-size: 15px; font-style: italic; color: var(--muted); margin: 0 0 8px 6px; }
 mark.focus { background: #ffe2a8; color: var(--ink); padding: 0 4px; border-radius: 6px; font-weight: 800; }
 .aids { display: flex; gap: 22px; margin-bottom: 4px; }
 
