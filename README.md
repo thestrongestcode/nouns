@@ -1,6 +1,6 @@
 # The Word Vault: classroom board game
 
-A nouns and pronouns game for one screen. The class is split into two teams, and the teams take turns. Each card shows a sentence, and the teams decide the answer together. The teacher runs the game on one device that is shared on the board. Students do not need devices or accounts.
+A nouns and pronouns game for one screen, written for 11th and 12th grade students in Seminars in Topics of Literature at Brewster Madrid. The class is split into two teams, and the teams take turns. Each card shows a sentence, and the teams decide the answer together. The teacher runs the game on one device that is shared on the board. Students do not need devices or accounts.
 
 The game runs entirely in the browser. There is no server, database, or join code.
 
@@ -33,7 +33,7 @@ The workflow in `.github/workflows/pages.yml` builds the game and publishes it o
 - **Discuss:** after each card the board shows why the answer is right and a question for the class.
 - **Finish:** the winner is shown, with the concept most cards were missed on.
 - **Help:** "Show hint" gives a clue, "Read aloud" reads the sentence and the choices, and "How to play" explains the rules on screen.
-- **Flashcards:** the home page has a flip card for each of the 16 noun and pronoun types in the game. The back shows what it means, examples, a sentence, and a tip for spotting it. "Flip all" reveals every card at once.
+- **Flashcards:** the home page has a flip card for each of the 18 noun and pronoun types, from common nouns to gerunds and reciprocal pronouns. The back shows what it means, examples, a sentence, and a tip for spotting it. "Flip all" reveals every card at once.
 
 The game is saved in the browser tab, so a page refresh keeps the current game. "Leave this game" ends it.
 
@@ -55,6 +55,15 @@ The game is saved in the browser tab, so a page refresh keeps the current game. 
 ```bash
 npm test
 ```
+
+## The cards
+
+- **Noun Forge:** kinds of noun, including compound nouns, non-count nouns, and gerunds.
+- **Pronoun Portal:** kinds of pronoun, including reciprocal and intensive pronouns.
+- **Repair Lab:** look-alikes, where the same word does different jobs ("that" as a relative or demonstrative pronoun, reflexive vs. intensive, "between you and me").
+- **Master Lock:** famous lines from Shakespeare, Austen, Dickens, Fitzgerald, Wilde, Shelley, Melville, and Coleridge.
+
+About half the sentences are real lines from public-domain works, and the board shows the source under each. Discussion questions tie the grammar back to the text.
 
 ## Notes for editing questions
 

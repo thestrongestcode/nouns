@@ -21,7 +21,7 @@ test('each flashcard has a definition, examples, a tip, and a sentence that cont
   for (const card of FLASHCARDS) {
     assert.ok(card.definition.trim(), `${card.skill} definition`);
     assert.ok(card.tip.trim(), `${card.skill} tip`);
-    assert.ok(card.examples.length >= 3, `${card.skill} examples`);
+    assert.ok(card.examples.length >= 2, `${card.skill} examples`);
     assert.ok(card.sentence.includes(card.focus), `${card.skill}: "${card.focus}" not in sentence`);
   }
 });

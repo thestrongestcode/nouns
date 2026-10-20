@@ -55,6 +55,22 @@ test('the label answer matches the card skill, so the debrief names the right co
   }
 });
 
+test('the highlighted word is a whole word, so the board never highlights part of a longer word', () => {
+  for (const q of QUESTIONS) {
+    const at = q.context.indexOf(q.focus);
+    const before = q.context[at - 1] || ' ';
+    const after = q.context[at + q.focus.length] || ' ';
+    assert.ok(!/[\p{L}]/u.test(before) && !/[\p{L}]/u.test(after), `card ${q.id}: "${q.focus}" is inside a longer word`);
+  }
+});
+
+test('quotations name their source', () => {
+  for (const q of QUESTIONS) {
+    assert.equal(typeof q.source, 'string', `card ${q.id} source`);
+  }
+  assert.ok(QUESTIONS.filter(q => q.source).length >= 20, 'expected the literary lines to carry sources');
+});
+
 test('every card has a hint, an explanation, and a discussion question', () => {
   for (const q of QUESTIONS) {
     for (const field of ['hint', 'why', 'discuss']) {
