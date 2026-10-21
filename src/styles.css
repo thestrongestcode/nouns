@@ -347,7 +347,7 @@ a.button { display: inline-block; text-decoration: none; }
 .fc-name { font-size: 26px; font-weight: 900; line-height: 1.15; }
 .fc-cue { font-size: 13px; font-weight: 700; color: var(--muted); margin-top: 6px; }
 .fc-title { font-size: 17px; font-weight: 900; color: var(--teal); }
-.fc-def { font-size: 16px; line-height: 1.45; font-weight: 600; }
+.fc-def { font-size: 15px; line-height: 1.45; }
 .fc-ex, .fc-tip { font-size: 14px; line-height: 1.45; color: var(--ink); }
 .fc-sentence { font-size: 15px; line-height: 1.45; background: #f6f5f0; border-left: 4px solid var(--amber); border-radius: 8px; padding: 7px 10px; }
 .fc-tip { color: var(--muted); }

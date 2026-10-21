@@ -87,7 +87,7 @@ function flashcard(card) {
       </span>
       <span class="face back" hidden>
         <span class="fc-title">${esc(capitalize(card.skill))}</span>
-        <span class="fc-def">${esc(card.definition)}</span>
+        <span class="fc-def"><strong>Definition:</strong> ${esc(card.definition)}</span>
         <span class="fc-ex"><strong>Examples:</strong> ${card.examples.map(esc).join(', ')}</span>
         <span class="fc-sentence">${sentence}</span>
         <span class="fc-tip"><strong>Tip:</strong> ${esc(card.tip)}</span>
