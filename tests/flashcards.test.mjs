@@ -26,6 +26,15 @@ test('each flashcard has a definition, examples, a tip, and a sentence that cont
   }
 });
 
+test('each flashcard highlights a whole word in its sentence', () => {
+  for (const card of FLASHCARDS) {
+    const at = card.sentence.indexOf(card.focus);
+    const before = card.sentence[at - 1] || ' ';
+    const after = card.sentence[at + card.focus.length] || ' ';
+    assert.ok(!/\p{L}/u.test(before) && !/\p{L}/u.test(after), `${card.skill}: "${card.focus}" is inside a longer word`);
+  }
+});
+
 test('no flashcard text uses an em dash', () => {
   for (const card of FLASHCARDS) {
     const text = [card.definition, card.tip, card.sentence, ...card.examples].join(' ');
