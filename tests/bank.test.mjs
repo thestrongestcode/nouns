@@ -5,20 +5,20 @@ import { QUESTIONS, CHAMBERS } from '../src/questions.js';
 // Words as a reader sees them: letters, marks, and apostrophes (including curly ones).
 const tokens = text => text.match(/[\p{L}\p{M}’']+/gu) || [];
 
-test('the bank has 64 cards, 16 per chamber, with unique ids', () => {
-  assert.equal(QUESTIONS.length, 64);
-  assert.equal(new Set(QUESTIONS.map(q => q.id)).size, 64);
+test('the bank has 128 cards, 32 per chamber, with unique ids', () => {
+  assert.equal(QUESTIONS.length, 128);
+  assert.equal(new Set(QUESTIONS.map(q => q.id)).size, 128);
   assert.equal(CHAMBERS.length, 4);
   for (let sector = 0; sector < 4; sector++) {
-    assert.equal(QUESTIONS.filter(q => q.sector === sector).length, 16, `chamber ${sector}`);
+    assert.equal(QUESTIONS.filter(q => q.sector === sector).length, 32, `chamber ${sector}`);
   }
 });
 
-test('every chamber has 8 label cards and 8 word cards', () => {
+test('every chamber has 16 label cards and 16 word cards', () => {
   for (let sector = 0; sector < 4; sector++) {
     const cards = QUESTIONS.filter(q => q.sector === sector);
-    assert.equal(cards.filter(q => q.type === 'label').length, 8, `labels in chamber ${sector}`);
-    assert.equal(cards.filter(q => q.type === 'word').length, 8, `words in chamber ${sector}`);
+    assert.equal(cards.filter(q => q.type === 'label').length, 16, `labels in chamber ${sector}`);
+    assert.equal(cards.filter(q => q.type === 'word').length, 16, `words in chamber ${sector}`);
   }
 });
 
@@ -88,14 +88,13 @@ test('every card has a hint, an explanation, and a discussion question', () => {
   }
 });
 
-test('the sentences vary, so the game is not repetitive', () => {
-  assert.ok(new Set(QUESTIONS.map(q => q.context)).size >= 60, 'too many repeated sentences');
+test('every sentence is different, so the game is not repetitive', () => {
+  assert.equal(new Set(QUESTIONS.map(q => q.context)).size, QUESTIONS.length, 'a sentence is used twice');
 });
 
 test('no card uses an em dash, which is the user preference for written text', () => {
   for (const q of QUESTIONS) {
-    for (const field of ['context', 'hint', 'why', 'discuss', 'prompt', ...q.options]) {
-      assert.ok(!String(q[field]).includes('\u2014'), `card ${q.id} ${field} has an em dash`);
-    }
+    const texts = [q.context, q.hint, q.why, q.discuss, q.prompt, q.source, ...q.options];
+    assert.ok(texts.every(t => !String(t).includes('\u2014')), `card ${q.id} has an em dash`);
   }
 });

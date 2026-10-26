@@ -41,7 +41,7 @@ The game is saved in the browser tab, so a page refresh keeps the current game. 
 
 | Path | What it is |
 | --- | --- |
-| `src/questions.js` | The 64 cards: 32 label cards and 32 word cards, 16 per chamber |
+| `src/questions.js` | The 128 cards: 64 label cards and 64 word cards, 32 per chamber |
 | `src/flashcards.js` | The 16 study flashcards on the home page |
 | `src/game.js` | Card selection, team turns, scoring, and the debrief (no browser code) |
 | `src/main.js` | The screens: home, how to play, setup, board, and results |
@@ -63,7 +63,7 @@ npm test
 - **Repair Lab:** look-alikes, where the same word does different jobs ("that" as a relative or demonstrative pronoun, reflexive vs. intensive, "between you and me").
 - **Master Lock:** famous lines from Shakespeare, Austen, Dickens, Fitzgerald, Wilde, Shelley, Melville, and Keats.
 
-About half the sentences are real lines from public-domain works, and the board shows the source under each. Discussion questions tie the grammar back to the text.
+Each game draws 16 or 32 cards at random from the pool of 128, so back-to-back quick games share only about 2 cards on average. About half the sentences are real lines from public-domain works, and the board shows the source under each. Discussion questions tie the grammar back to the text.
 
 ## Notes for editing questions
 
